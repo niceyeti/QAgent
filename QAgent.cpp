@@ -50,7 +50,7 @@ QAgent::QAgent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.05;
+	_eta = 0.10;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time index
@@ -61,7 +61,7 @@ QAgent::QAgent(int initX, int initY)
 		//this could be custom/regularized in the future, where inputs and structure are customized to the action/state dependencies
 		//adding lots of hidden nodes currently makes the agent more precise, but this may be a degenerate form of regularization (more neurons equals smoother approximations, more/smaller weights)
 		//a good setup for local estimation: _qNets[i].BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 3, 1); //this is just generic, for testing;
-		_qNets[i].BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 3, 1); //this is just generic, for testing;
+		_qNets[i].BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 2, 1); //this is just generic, for testing;
 		//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
 		_qNets[i].SetHiddenLayerFunction(TANH);
 		_qNets[i].SetOutputLayerFunction(LINEAR);
@@ -869,7 +869,7 @@ void QAgent::Update(const World* world, const vector<Missile>& missiles)
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if((rand() % 5) == 4 && _episodeCount < 10000){
+	if((rand() % 5) == 4){
 		if(rand() % 2 == 0)
 			CurrentAction = _getStochasticOptimalAction();
 		else

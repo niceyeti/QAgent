@@ -18,10 +18,9 @@ int main(int argc, char** argv, char** env)
 		//qAgent.MinibatchUpdate(&world,missiles);
 		//qAgent.DiscriminativeUpdate(&world,missiles);
 
-		for(int i = 0; i < 20; i++){
+		for(int i = 0; i < 10; i++){
 			qAgent.Update(&world,missiles);
 		}
-		//cin >> dummy;
 
 		//qAgent.EpochalUpdate(&world,missiles);
 
