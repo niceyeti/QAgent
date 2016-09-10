@@ -1,0 +1,4 @@
+#!/bin/bash
+echo Compiling QAgent from main.cpp to test.exe with optimizations ...
+g++ ../ANN/Neuron.cpp ../ANN/MultilayerNetwork.cpp ../ANN/Util.cpp QAgent.cpp World.cpp main.cpp -Wall -o test.exe -std=c++11
+

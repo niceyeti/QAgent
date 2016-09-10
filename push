@@ -1,0 +1,3 @@
+git add -A
+git commit -m "routine updates"
+git push -u origin master
