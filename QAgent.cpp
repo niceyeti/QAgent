@@ -807,12 +807,12 @@ void QAgent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 
 		//detect convergence: if estimate is within 0.1 of previous estimate (verifying also that this is consistent for the same action)
 		netError = _absDiff(lastMax,maxQ);
-		cout << "maxq " << maxQ << "  lastMax " << lastMax << "  netError " << netError << endl;
+		//cout << "maxq " << maxQ << "  lastMax " << lastMax << "  netError " << netError << endl;
 		convergence = (lastOptimalAction == optimalAction) && (netError < 0.05);
 		if(!convergence){
 			//get the target q factor from the experienced reward given the last action
 			qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
-			cout << "QTARGET: " << qTarget << endl;
+			//cout << "QTARGET: " << qTarget << endl;
 			//backpropagate the error and update the network weights for the last action (only)
 			_qNets[(int)CurrentAction].Classify(_getPreviousState((Action)CurrentAction)); //the net must be re-clamped to the previous state inputs and signals
 			_qNets[(int)CurrentAction].BackpropagateError(_getPreviousState((Action)CurrentAction), qTarget);
