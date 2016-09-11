@@ -50,7 +50,7 @@ QAgent::QAgent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.10;
+	_eta = 0.05;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time index
@@ -61,14 +61,14 @@ QAgent::QAgent(int initX, int initY)
 		//this could be custom/regularized in the future, where inputs and structure are customized to the action/state dependencies
 		//adding lots of hidden nodes currently makes the agent more precise, but this may be a degenerate form of regularization (more neurons equals smoother approximations, more/smaller weights)
 		//a good setup for local estimation: _qNets[i].BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 3, 1); //this is just generic, for testing;
-		_qNets[i].BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 2, 1); //this is just generic, for testing;
+		_qNets[i].BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 5, 1); //this is just generic, for testing;
 		//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
 		_qNets[i].SetHiddenLayerFunction(TANH);
 		_qNets[i].SetOutputLayerFunction(LINEAR);
 		_qNets[i].InitializeWeights();
 		_qNets[i].SetEta(_eta);
 		//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
-		_qNets[i].SetMomentum(0.0); // algorithm has worked fine w/ and w/out momentum; no perf results; use 0.5ish
+		_qNets[i].SetMomentum(0.1); // algorithm has worked fine w/ and w/out momentum; no perf results; use 0.5ish
 	}
 
 	//init the state history; only t and t+1 for now
@@ -590,9 +590,9 @@ double QAgent::_getCurrentRewardValue(const World* world, const vector<Missile>&
 	double reward = 0.0;
 	//TODO: better to define rewards as positive/negative or all negative? all negative seems more consistent.
 	//double MISSILE_DAMAGE_COST = -10.0;
-	double COLLISION_COST = -40.0;
+	double COLLISION_COST = 0.0;
 	//double REPETITION_COST = -2.0;
-	double GOAL_REWARD = 40.0;
+	double GOAL_REWARD = 0.0;
 	//double RADAR_RADIUS = 8.0;
 
 	/*
@@ -770,6 +770,90 @@ void QAgent::ResetEpoch()
 	EpochGoalCount = 0;
 	EpochActionCount = 0;
 	EpochCollisionCount = 0;
+}
+
+/*
+
+*/
+void QAgent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
+{
+	bool convergence = false;
+	int i, iterations;
+	double netError = 0.0, maxQ = 0.0, tempMax = 0.0, lastMax = 0.0, qTarget = 0.0;
+	Action lastOptimalAction = ACTION_DOWN, optimalAction = ACTION_LEFT, tempAction = ACTION_RIGHT;
+
+	//Update agent's current state and state history
+	_updateCurrentState(world, missiles);
+
+	//loop over the q values, retraining to result in some degree of convergence, at least for this action
+	maxQ = -999999999;
+	lastMax = -999999999;
+	for(iterations = 0, convergence = false; iterations < 100 && !convergence; iterations++){
+		//classify the new current-state across all action-nets 
+		for(i = 0, tempMax = -1000000; i < _qNets.size(); i++){
+			//classify the state we just entered, given the previous action
+			_qNets[i].Classify(_getCurrentState((Action)i));
+			//cout << "classified: " << _qNets[i].GetOutputs()[0].Output << endl;
+			//track the max action available in current state
+			if(_qNets[i].GetOutputs()[0].Output > tempMax){
+				tempMax = _qNets[i].GetOutputs()[0].Output;
+				tempAction = (Action)i;
+			}
+		}
+		lastMax = maxQ;
+		lastOptimalAction = optimalAction;
+		optimalAction = tempAction;
+		maxQ = tempMax;
+
+		//detect convergence: if estimate is within 0.1 of previous estimate (verifying also that this is consistent for the same action)
+		netError = _absDiff(lastMax,maxQ);
+		cout << "maxq " << maxQ << "  lastMax " << lastMax << "  netError " << netError << endl;
+		convergence = (lastOptimalAction == optimalAction) && (netError < 0.05);
+		if(!convergence){
+			//get the target q factor from the experienced reward given the last action
+			qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
+			cout << "QTARGET: " << qTarget << endl;
+			//backpropagate the error and update the network weights for the last action (only)
+			_qNets[(int)CurrentAction].Classify(_getPreviousState((Action)CurrentAction)); //the net must be re-clamped to the previous state inputs and signals
+			_qNets[(int)CurrentAction].BackpropagateError(_getPreviousState((Action)CurrentAction), qTarget);
+			_qNets[(int)CurrentAction].UpdateWeights(_getPreviousState((Action)CurrentAction), qTarget);
+		}
+	}
+
+	_epochReward += qTarget;
+
+	//record this example
+	_recordExample(_getPreviousState((Action)CurrentAction), qTarget, _qNets[(int)CurrentAction].GetOutputs()[0].Output, CurrentAction);
+
+	//take the action with the highest q-value
+	CurrentAction = optimalAction;
+
+	//e-greedy action selection: select the optimal action 80% of the time
+	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
+	if((rand() % 5) == 4){
+	//if(((rand() % 5) == 4 && _totalEpisodes < 1000) || ((_totalEpisodes >= 1000) && (rand() % 10) == 9)){
+		if(rand() % 2 == 0)
+			CurrentAction = _getStochasticOptimalAction();
+		else
+			CurrentAction = (Action)(rand() % NUM_ACTIONS);
+	}
+
+	//map the action into outputs
+	_takeAction(CurrentAction);
+
+	//some metalogic stuff: random restarts and force agent to move if in same place too long
+	//TODO: this member represents bad coupling
+	agent.sufferedCollision = false;
+	_episodeCount++;
+	_totalEpisodes++;
+
+	//testing: print the neural net weights
+	if(_episodeCount % 100 == 1){
+		for(i = 0; i < _qNets.size(); i++){
+			cout << "Action net " << GetActionStr((Action)i) << endl;
+			_qNets[i].PrintWeights();
+		}
+	}
 }
 
 

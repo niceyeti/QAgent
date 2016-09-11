@@ -26,10 +26,10 @@ def writeRecord(state, qTarget, ofile):
 
 historyFile = open(sys.argv[1],"r")
 
-upFile = open("up.txt","w+")
-downFile = open("down.txt","w+")
-leftFile = open("left.txt","w+")
-rightFile = open("right.txt","w+")
+upFile = open("Data/up.txt","w+")
+downFile = open("Data/down.txt","w+")
+leftFile = open("Data/left.txt","w+")
+rightFile = open("Data/right.txt","w+")
 
 for record in historyFile.readlines():
 	stateVals = record.split(">")[0].replace("<","").split(",")

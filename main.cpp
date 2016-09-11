@@ -13,15 +13,12 @@ int main(int argc, char** argv, char** env)
 	world.InitializeWorld(missiles, qAgent.agent);
 
 	while(true){
+
 		//tell the agent the current world state, letting it take some action
 		//qAgent.OfflineUpdate(&world,missiles);
 		//qAgent.MinibatchUpdate(&world,missiles);
 		//qAgent.DiscriminativeUpdate(&world,missiles);
-
-		for(int i = 0; i < 10; i++){
-			qAgent.Update(&world,missiles);
-		}
-
+		qAgent.LoopedUpdate(&world,missiles);
 		//qAgent.EpochalUpdate(&world,missiles);
 
 		//Update and draw the world; this is just updating a model and displaying a view

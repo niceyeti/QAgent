@@ -38,7 +38,6 @@ The architecture and update method is directly from Haykin, Neural Networks: A C
 //not much rhyme or reason as to how the class decomposition was done.
 class QAgent{
 	private:
-		//ofstream history;
 		int _repetitionCounter;
 		int _episodeCount;
 		int _epochCount;
@@ -99,6 +98,7 @@ class QAgent{
 		double GoalResetThreshold;
 		void ResetEpoch();
 		const char* GetActionStr(int i);
+		void LoopedUpdate(const World* world, const vector<Missile>& missiles);
 		void DiscriminativeUpdate(const World* world, const vector<Missile>& missiles);
 		void MinibatchUpdate(const World* world, const vector<Missile>& missiles);
 		void OfflineUpdate(const World* world, const vector<Missile>& missiles);
