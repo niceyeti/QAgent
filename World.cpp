@@ -25,12 +25,6 @@ World::~World()
 	}
 }
 
-void World::_setMaxGoalDist()
-{
-	//oriented with the lower left grid as the origin, the max goal distance is always just the dist from origin to goal
-	MaxDistanceToGoal = sqrt(pow((double)GOAL_X, 2.0) + pow((double)GOAL_Y, 2.0));
-}
-
 int World::MaxX() const
 {
 	return _maxX;
@@ -43,10 +37,10 @@ int World::MaxY() const
 
 /*
 //just for debugging
-void World::PrintState(vector<Missile>& missiles, DiscreteQAgent& qagent)
+void World::PrintState(vector<Missile>& missiles, DiscreteQ2Agent& qagent)
 {
 	cout << "world rows: " << _world.size() << "  cols: " << _world[0].size() << endl;
-	cout << "agent position: " << qagent.agent.x << "," << qagent.agent.y << endl;
+	cout << "agent position: " << qagent->agent.x << "," << qagent->agent.y << endl;
 	for(int i = 0; i < missiles.size(); i++){
 		cout << "m" << i << ": " << missiles[i].x << "," << missiles[i].y << endl;
 	}
@@ -118,18 +112,6 @@ void World::InitializeWorld(vector<Missile>& missiles, Agent& agent)
 	_setRandomGoalLocation();
 }
 
-void World::_setRandomGoalLocation()
-{
-	//erase existing location
-	GetCell(GOAL_X, GOAL_Y).isGoal = false;
-	//set new location
-	GOAL_X = rand() % _maxX;
-	GOAL_Y = rand() % (_maxY / 5) + ((4 * _maxY) / 5);
-	GetCell(GOAL_X, GOAL_Y).isGoal = true;
-	//and reset max goal distance, given new location
-	_setMaxGoalDist();
-}
-
 /*
 int max(int x1, int x2)
 {
@@ -163,32 +145,32 @@ void World::InitRandomMissiles(vector<Missile>& missiles, int numMissiles)
 }
 
 //Note this 'takes' the agent's action for the agent, based on its velocity.
-void World::UpdateWorld(vector<Missile>& missiles, QAgent& qagent, double timeStep)
+void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 {
 	int newX, newY;
 
 	//upate agent
 	//teleport to (0,0) if goal reached
-	if(GetCell(qagent.agent.x, qagent.agent.y).isGoal){
-		qagent.EpochGoalCount++;
-		//cout << "AGENT FOUND GOAL, epoch ct=" << qagent.EpochGoalCount << " thresh=" << qagent.GoalResetThreshold << endl;
+	if(GetCell(qagent->agent.x, qagent->agent.y).isGoal){
+		qagent->EpochGoalCount++;
+		//cout << "AGENT FOUND GOAL, epoch ct=" << qagent->EpochGoalCount << " thresh=" << qagent->GoalResetThreshold << endl;
 		//cin >> newX;
 	}
 
 	//allows the agent to find the goal a few times before resetting
-	if(qagent.EpochGoalCount >= qagent.GoalResetThreshold){
+	if(qagent->EpochGoalCount >= qagent->GoalResetThreshold){
 		_restartAgent(qagent);
 	}
 	else{
-		newX = qagent.agent.x + qagent.agent.xVelocity * timeStep;
-		newY = qagent.agent.y + qagent.agent.yVelocity * timeStep;
+		newX = qagent->agent.x + qagent->agent.xVelocity * timeStep;	
+		newY = qagent->agent.y + qagent->agent.yVelocity * timeStep;
 		//inform the agent of any collision
 		if(!IsValidPosition(newX,newY) || GetCell(newX,newY).isObstacle){
-			//qagent.agent.sufferedCollision = true;
-			//qagent.EpochCollisionCount++;
-			_restartAgent(qagent);
+			qagent->agent.sufferedCollision = true;
+			qagent->EpochCollisionCount++;
+			//_restartAgent(qagent);
 		}
-		else{
+		//else{
 
 		//the following checks prevent the agent from moving out of bounds or through obstacles
 		if(newX > _maxX){
@@ -204,14 +186,14 @@ void World::UpdateWorld(vector<Missile>& missiles, QAgent& qagent, double timeSt
 			newY = 0;
 		}
 		if(!GetCell(newX, newY).isObstacle){
-			qagent.agent.x = (double)newX;
-			qagent.agent.y = (double)newY;
+			qagent->agent.x = (double)newX;
+			qagent->agent.y = (double)newY;
 		}
-		}
+		//}
 	}
 
 	//if(IsValidPosition(agent.x, agent.y)){
-	GetCell(qagent.agent.x, qagent.agent.y).isTraversed = true;
+	GetCell(qagent->agent.x, qagent->agent.y).isTraversed = true;
 	//}
 
 	/*
@@ -237,12 +219,31 @@ void World::UpdateWorld(vector<Missile>& missiles, QAgent& qagent, double timeSt
 }
 
 //wrapper util for resetting the agent and restarting it in a random start location
-void World::_restartAgent(QAgent& qagent)
+void World::_restartAgent(Q2Agent* qagent)
 {
-	_setRandomAgentStartLocation(qagent.agent);
 	_setRandomGoalLocation();
+	_setRandomAgentStartLocation(qagent->agent);
 	_resetTraversalFlags();
-	qagent.ResetEpoch();
+	qagent->ResetEpoch();
+}
+
+
+void World::_setMaxGoalDist()
+{
+	//oriented with the lower left grid as the origin, the max goal distance is always just the dist from origin to goal
+	MaxDistanceToGoal = sqrt(MaxX()*MaxX() + MaxY()*MaxY());
+	//MaxDistanceToGoal = sqrt(pow((double)GOAL_X - agent.x, 2.0) + pow((double)GOAL_Y - agent.y, 2.0));
+}
+
+
+void World::_setRandomGoalLocation()
+{
+	//erase existing location
+	GetCell(GOAL_X, GOAL_Y).isGoal = false;
+	//set new location
+	GOAL_X = rand() % _maxX;
+	GOAL_Y = rand() % (_maxY / 5) + ((4 * _maxY) / 5);
+	GetCell(GOAL_X, GOAL_Y).isGoal = true;
 }
 
 //randomly place the agent in the lower portion of the world
@@ -270,7 +271,7 @@ bool World::IsValidPosition(int x, int y) const
 	return (x >= 0 && x <= _maxX) && (y >= 0 && y <= _maxY);
 }
 
-void World::DrawWorld(vector<Missile>& missiles, Agent& agent)
+void World::Draw(vector<Missile>& missiles, Agent& agent)
 {
 	int i, j, stringIndex;
 	int lineWidth = _world[0].size() + 1; //plus one for the newline of each row of the grid _world

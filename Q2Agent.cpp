@@ -1,4 +1,4 @@
-#include "QAgent.hpp"
+#include "Q2Agent.hpp"
 
 /*
 TODO's for experimentation:
@@ -25,7 +25,7 @@ Experience::Experience()
 	PerformedAction = ACTION_DOWN;
 }
 
-QAgent::QAgent(int initX, int initY)
+Q2Agent::Q2Agent(int initX, int initY)
 {
 	//init the agent
 	agent.x = initX;
@@ -50,33 +50,28 @@ QAgent::QAgent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.05;
+	_eta = 0.04;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time index
+	_currentActionValues.resize(NUM_ACTIONS); //for caching the q-values per action, instead of re-calling Classify() on the net, per action
 
 	//init the neural networks, one for each action
-	_qNets.resize(NUM_ACTIONS);
-	for(int i = 0; i < _qNets.size(); i++){
-		//this could be custom/regularized in the future, where inputs and structure are customized to the action/state dependencies
-		//adding lots of hidden nodes currently makes the agent more precise, but this may be a degenerate form of regularization (more neurons equals smoother approximations, more/smaller weights)
-		//a good setup for local estimation: _qNets[i].BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 3, 1); //this is just generic, for testing;
-		_qNets[i].BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 5, 1); //this is just generic, for testing;
-		//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
-		_qNets[i].SetHiddenLayerFunction(TANH);
-		_qNets[i].SetOutputLayerFunction(LINEAR);
-		_qNets[i].InitializeWeights();
-		_qNets[i].SetEta(_eta);
-		//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
-		_qNets[i].SetMomentum(0.1); // algorithm has worked fine w/ and w/out momentum; no perf results; use 0.5ish
-	}
+	_qNet.BuildNet(2, STATE_DIMENSION, 24, 1); //this is just generic, for testing;
+	//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
+	_qNet.SetHiddenLayerFunction(TANH);
+	_qNet.SetOutputLayerFunction(LINEAR);
+	_qNet.InitializeWeights();
+	_qNet.SetEta(_eta);
+	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
+	_qNet.SetMomentum(0.2);
 
 	//init the state history; only t and t+1 for now
 	_stateHistory.resize(2);
 	for(int i = 0; i < _stateHistory.size(); i++){
 		_stateHistory[i].resize(NUM_ACTIONS); //each neural net has its own state vector at each time step
 		for(int j = 0; j < _stateHistory[i].size(); j++){
-			_stateHistory[i][j].resize(STATE_DIMENSION,0.0);
+			_stateHistory[i][j].resize(STATE_DIMENSION, 0.0);
 		}
 	}
 
@@ -92,20 +87,21 @@ QAgent::QAgent(int initX, int initY)
 	/*
 	//set up the regularization parameters
 	for(int i = 0; i < _qNets.size(); i++){	
-		_qNets[i].SetRegularizerLambda(0.1);
+		_qNet.SetRegularizerLambda(0.1);
 	}
 	*/
 
 }
 
-QAgent::~QAgent()
+Q2Agent::~Q2Agent()
 {
 	if(_outputFile.is_open()){
 		_outputFile.close();
 	}
 }
 
-const vector<double>& QAgent::_getPreviousState(Action action)
+//returns the t-1th state for the given action
+const vector<double>& Q2Agent::_getPreviousState(Action action)
 {
 	if(_t == 0)
 		return _stateHistory[ _stateHistory.size() - 1 ][(int)action];
@@ -113,23 +109,39 @@ const vector<double>& QAgent::_getPreviousState(Action action)
 	return _stateHistory[_t-1][(int)action];
 }
 
-const vector<double>& QAgent::_getCurrentState(Action action)
+const vector<double>& Q2Agent::_getCurrentState(Action action)
 {
 	return _stateHistory[ _t ][(int)action];
 }
 
-void QAgent::_updateCurrentState(const World* world, const vector<Missile>& missiles)
+void Q2Agent::_updateCurrentState(const World* world, const vector<Missile>& missiles)
 {
 	//update the time step; this is just an index for _stateHistory for now
 	_t = (_t + 1) % (int)_stateHistory.size();
 	
-	//each neural net has its own state vector, so init the first one, then copy it to the rest
-	_deriveCurrentState(world, missiles, _stateHistory[_t][0]);
+	//derive current state estimate, per each possible action
+	_deriveCurrentState(world, missiles);
 
 	//experimental: normalize the state vector such that the neural net inputs are effectively zero-mean
-	//_normalizeStateVector(world);
-	//_zeroMeanStateVector(world);
+	for(int action = 0; action < _stateHistory[_t].size(); action++){
+		_normalizeStateVector(world, _stateHistory[_t][action]);
+	}
+
+	PrintCurrentStateEstimates();
 }
+
+//Each action has a state estimate (the state that would be a consequence of taking the action). This prints these.
+void Q2Agent::PrintCurrentStateEstimates()
+{
+	for(int action = 0; action < _stateHistory[_t].size(); action++){
+		cout << "state " << GetActionStr(action) << ":" << endl;
+		for(int i = 0; i < _getCurrentState((Action)action).size(); i++){
+			cout << _getCurrentState((Action)action)[i] << " ";
+		}
+		cout << endl;
+	}
+}
+
 
 /*
 Normalizes the state vector.
@@ -138,13 +150,13 @@ This is experimental.
 
 TODO: Is this desirable over zero-mean? The only reason I'm keeping this around is for testing.
 */
-void QAgent::_normalizeStateVector(const World* world, vector<double>& state)
+void Q2Agent::_normalizeStateVector(const World* world, vector<double>& state)
 {
 	//note cosine attribute is not normalized, since cosine is inherently normalized
-	//_stateHistory[_t][SA_XVELOCITY] /= MAX_VELOCITY;
-	//_stateHistory[_t][SA_YVELOCITY] /= MAX_VELOCITY;
-	state[SA_COLLISION_PROXIMITY] /= MAX_COLLISION_PROXIMITY_RANGE;
-	state[SA_GOAL_DIST] /= world->MaxDistanceToGoal;
+	//cout << "collision proximity: " << 	state[SA_COLLISION_PROXIMITY] << endl;
+	state[SA_COLLISION_PROXIMITY] = 1.0 - (2.0 * ((double)MAX_COLLISION_PROXIMITY_RANGE - state[SA_COLLISION_PROXIMITY])) / (double)MAX_COLLISION_PROXIMITY_RANGE;
+	//cout << "AFTER: " << state[SA_COLLISION_PROXIMITY] << endl;
+	state[SA_GOAL_DIST] = 1.0 - (2.0 * state[SA_GOAL_DIST]) / world->MaxDistanceToGoal;
 }
 
 /*
@@ -152,7 +164,7 @@ Normalizes all inputs and then zeroes their mean, such that all inputs range [-1
 
 This is experimental.
 */
-void QAgent::_zeroMeanStateVector(const World* world, vector<double>& state)
+void Q2Agent::_zeroMeanStateVector(const World* world, vector<double>& state)
 {
 	//note cosine attribute is not normalized, since cosine is inherently normalized
 	//_stateHistory[_t][SA_XVELOCITY] /= MAX_VELOCITY;
@@ -185,7 +197,7 @@ Sample python calculation for the same method:
 	>>> elNormed
 	[0.41408271379299455, 0.3746775336017786, 0.18605935684745473, 0.025180395757772277]
 */
-Action QAgent::_getStochasticOptimalAction()
+Action Q2Agent::_getStochasticOptimalAction()
 {
 	//return _selectionMethod1();
 	return _selectionMethod2();
@@ -194,18 +206,18 @@ Action QAgent::_getStochasticOptimalAction()
 //This method uses a more uniform probabilistic selection than method 1,
 //which is heavily biased by the most action due to exp().
 //TODO: This is incredibly slow for what it accomplishes
-Action QAgent::_selectionMethod2()
+Action Q2Agent::_selectionMethod2()
 {
 	int i;
 	double minQval, r, cdf;
 	Action selectedAction;
 	vector<double> temp;
 
-	temp.resize(_qNets.size());
+	temp.resize(NUM_ACTIONS);
 
 	//copy the q-net vals and get the min element
-	for(i = 0, minQval = 100000; i < _qNets.size(); i++){
-		temp[i] = _qNets[i].GetOutputs()[0].Output;
+	for(i = 0, minQval = 100000; i < NUM_ACTIONS; i++){
+		temp[i] = _currentActionValues[i];
 		if(temp[i] < minQval){
 			minQval = temp[i];
 		}
@@ -259,7 +271,8 @@ Action QAgent::_selectionMethod2()
 	return selectedAction;
 }
 
-Action QAgent::_selectionMethod1()
+/*
+Action Q2Agent::_selectionMethod1()
 {
 	int i;
 	double maxQval, r, cdf;
@@ -284,14 +297,7 @@ Action QAgent::_selectionMethod1()
 	//normalize the vals to make them probabilities
 	_normalizeVector(temp);
 
-	/*
-	cout << "normalized q vals: ";
-	for(i = 0; i < temp.size(); i++){
-		cout << temp[i] << " ";
-	}
-	cout << endl;
-	*/
-
+	
 	//stochastically choose an action, based on the probabilistic interpretation of the temp vals
 	r = (double)(rand() % 1000) / 1000.0;
 	cdf = temp[0];
@@ -306,10 +312,11 @@ Action QAgent::_selectionMethod1()
 
 	return selectedAction;
 }
+*/
 
 //Normalizes a vector of values, consequently making them probabilities, such that their sum is 1.0.
 //This is not algebraic unitization.
-void QAgent::_normalizeVector(vector<double>& vec)
+void Q2Agent::_normalizeVector(vector<double>& vec)
 {
 	double vsum = 0.0;
 
@@ -328,7 +335,7 @@ The definition of the state vector is an incredibly important part of this syste
 
 Current state attrbutes are defined in the .hpp: tyepdef enum StateAttribute{XPOS, YPOS, XVELOCITY, YVELOCITY, OBSTACLE_DIST, MISSILE_LIKELIHOOD, STRIKE_LIKELIHOOD};
 */
-void QAgent::_deriveCurrentState(const World* world, const vector<Missile>& missiles, vector<double>& state)
+void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& missiles)
 {
 	//tell the agent if it is headed in a good direction: vector-cosine gives a nice value in range [+1.0,-1.0]
 	double xHeading, yHeading, x_prime, y_prime;
@@ -409,9 +416,8 @@ is in some range.
 @headingY: y component of some heading
 Rest are self-explanatory. Distances are relative to agent's current position.
 */
-double QAgent::_nearestObjectOnHeading(double headingX, double headingY, const World* world, const vector<Missile>& missiles)
+double Q2Agent::_nearestObjectOnHeading(double headingX, double headingY, const World* world, const vector<Missile>& missiles)
 {
-	double dist;
 	int x_t, y_t;
 
 	//simulate next t time steps at current velocities/heading
@@ -420,17 +426,16 @@ double QAgent::_nearestObjectOnHeading(double headingX, double headingY, const W
 		y_t = (int)(headingY * (double)t + agent.y);
 		//check if position is either an obstacle of off-map, which is the same as an impenetrable obstacle
 		if(!world->IsValidPosition(x_t, y_t) || world->GetCell(x_t, y_t).isObstacle){
-			dist = _dist(agent.x, agent.y, (double)x_t, (double)y_t);
-			if(dist <= MAX_COLLISION_PROXIMITY_RANGE){
-				return dist;
-			}
+			double dist = _dist(agent.x, agent.y, (double)x_t, (double)y_t) - 1.0; //minus one, since collisions occur for adjacent cells, not when the agent is co-located with some obstacle
+			//return the min of the dist or max sensitivity range
+			return dist <= MAX_COLLISION_PROXIMITY_RANGE ? dist : MAX_COLLISION_PROXIMITY_RANGE;
 		}
 	}
 
 	return MAX_COLLISION_PROXIMITY_RANGE;
 }
 
-double QAgent::_dist(double x1, double y1, double x2, double y2)
+double Q2Agent::_dist(double x1, double y1, double x2, double y2)
 {
 	//points are the same, return zero and avert call to sqrt(0)
 	if(x1 == x2 && y1 == y2){
@@ -442,8 +447,8 @@ double QAgent::_dist(double x1, double y1, double x2, double y2)
 
 /*
 Experimental: let's the agent make continous actions (velocities) based on the q values.
-*/
-void QAgent::_takeContinuousAction()
+
+void Q2Agent::_takeContinuousAction()
 {
 	double ycomp = _qNets[(int)ACTION_UP].GetOutputs()[0].Output - _qNets[(int)ACTION_DOWN].GetOutputs()[0].Output;
 	double xcomp = _qNets[(int)ACTION_RIGHT].GetOutputs()[0].Output - _qNets[(int)ACTION_LEFT].GetOutputs()[0].Output;
@@ -454,22 +459,23 @@ void QAgent::_takeContinuousAction()
 		normal = sqrt( xcomp*xcomp + ycomp*ycomp );
 	}
 
-	/*normalize all the q values
-	for(int i = 0; i < _qNets.size(); i++){
-		normal += (_qNets[i].GetOutputs()[0].Output * _qNets[i].GetOutputs()[0].Output);
-	}
-	normal = sqrt(normal);
-	*/
+	normalize all the q values
+	//for(int i = 0; i < _qNets.size(); i++){
+	//	normal += (_qNets[i].GetOutputs()[0].Output * _qNets[i].GetOutputs()[0].Output);
+	//}
+	//normal = sqrt(normal);
+	
 
 	agent.xVelocity = 2 * xcomp / normal;
 	agent.yVelocity = 2 * ycomp / normal;
 }
+*/
 
 /*
 Defines the attribute, what is the likelihood of hitting an enemy if we fire from
 current position?
 */
-double QAgent::_getStrikeLikelihood(const vector<Missile>& missiles)
+double Q2Agent::_getStrikeLikelihood(const vector<Missile>& missiles)
 {
 	double likelihood = 0.0;
 
@@ -495,7 +501,7 @@ so heuristics are used instead. We especially want to detect very near (in time/
 not those far out in time/distance.
 
 */
-double QAgent::_getMissileLikelihood(const vector<Missile>& missiles)
+double Q2Agent::_getMissileLikelihood(const vector<Missile>& missiles)
 {
 	double likelihood = 0.0;
 	
@@ -525,7 +531,7 @@ double QAgent::_getMissileLikelihood(const vector<Missile>& missiles)
 
 //A flat distance to nearest object, w/out respect to direction, just gives preference
 //for the agent to stay away from obstacles.
-double QAgent::_nearestObstacleDist(const World* world)
+double Q2Agent::_nearestObstacleDist(const World* world)
 {
 	double d, dist = 10.0;
 
@@ -545,7 +551,7 @@ double QAgent::_nearestObstacleDist(const World* world)
 }
 
 //copies a vector to another; user beware on size checking
-void QAgent::_copyVec(vector<double>& v1, vector<double>& v2)
+void Q2Agent::_copyVec(vector<double>& v1, vector<double>& v2)
 {
 	for(int i = 0; i < v1.size(); i++){
 		v2[i] = v1[i];
@@ -553,7 +559,7 @@ void QAgent::_copyVec(vector<double>& v1, vector<double>& v2)
 }
 
 //Based on the agent's last action, determines if action result in a wall/boundary collision.
-bool QAgent::_isWallCollision(const World* world)
+bool Q2Agent::_isWallCollision(const World* world)
 {
 	if(agent.x == 0 && CurrentAction == ACTION_LEFT)
 		return true;
@@ -585,16 +591,18 @@ Think about such dependencies. The point here is that the reward function, espec
 is worthy of study, and how it behaves directly affects the stability of the algorithm.
 
 Also note that when experimenting, certain state attributes can be essentially shut off by setting their associated reward to zero.
+
+NOTE: This returns the reward relative to **CurrentAction** and current velocity.
 */
-double QAgent::_getCurrentRewardValue(const World* world, const vector<Missile>& missiles)
+double Q2Agent::_getCurrentRewardValue(const World* world, const vector<Missile>& missiles)
 {
 	int x_prime, y_prime;
 	double reward = 0.0;
 	//TODO: better to define rewards as positive/negative or all negative? all negative seems more consistent.
 	//double MISSILE_DAMAGE_COST = -10.0;
-	double COLLISION_COST = 0.0;
+	double COLLISION_COST = -10.0;
 	//double REPETITION_COST = -2.0;
-	double GOAL_REWARD = 0.0;
+	double GOAL_REWARD = 10.0;
 	//double RADAR_RADIUS = 8.0;
 
 	/*
@@ -661,7 +669,7 @@ double QAgent::_getCurrentRewardValue(const World* world, const vector<Missile>&
 }
 
 //just normalizes the input vectors before calculating their cosine similarity
-double QAgent::_normalizedCosSim(double x1, double y1, double x2, double y2)
+double Q2Agent::_normalizedCosSim(double x1, double y1, double x2, double y2)
 {
 	double normal1 = sqrt(x1*x1 + y1*y1);
 	double normal2 = sqrt(x2*x2 + y2*y2);
@@ -674,7 +682,7 @@ double QAgent::_normalizedCosSim(double x1, double y1, double x2, double y2)
 }
 
 //cosine similarity for 2d vectors; range neatly fits between -1 and 1.0
-double QAgent::_cosSim(double x1, double y1, double x2, double y2)
+double Q2Agent::_cosSim(double x1, double y1, double x2, double y2)
 {
 	double cossim;
 	double dot = x1*x2 + y1*y2;
@@ -718,7 +726,7 @@ I have not defined these parameter settings in a closed form, I've just chosen t
 
 But note that they ought to be made explicit, since they will likely define the 
 
-double QAgent::_getTargetQValue(const vector<vector<WorldCell> >& world, const vector<Missile>& missiles)
+double Q2Agent::_getTargetQValue(const vector<vector<WorldCell> >& world, const vector<Missile>& missiles)
 {
 	double qTarget = 0.0;
 
@@ -741,7 +749,7 @@ etc.
 
 Prereqs: Output stream is open.
 */
-void QAgent::_recordExample(const vector<double>& state, double qTarget, double qEstimate, Action action)
+void Q2Agent::_recordExample(const vector<double>& state, double qTarget, double qEstimate, Action action)
 {
 	//write all the state values
 	_outputFile << "<";
@@ -758,7 +766,7 @@ void QAgent::_recordExample(const vector<double>& state, double qTarget, double 
 }
 
 //TODO: this is pretty disorganized, esp wrt the World
-void QAgent::ResetEpoch()
+void Q2Agent::ResetEpoch()
 {
 	//store performance given the last epoch
 	_lastEpochCollisionRate = EpochCollisionCount / (double)_episodeCount;
@@ -777,12 +785,13 @@ void QAgent::ResetEpoch()
 /*
 
 */
-void QAgent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
+void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 {
 	bool convergence = false;
-	int i, iterations;
+	int action, iterations;
 	double netError = 0.0, maxQ = 0.0, tempMax = 0.0, lastMax = 0.0, qTarget = 0.0;
-	Action lastOptimalAction = ACTION_DOWN, optimalAction = ACTION_LEFT, tempAction = ACTION_RIGHT;
+	vector<double> tempQVals;
+	Action lastOptimalAction = ACTION_DOWN, optimalAction = ACTION_LEFT, tempMaxAction = ACTION_RIGHT;
 
 	//Update agent's current state and state history
 	_updateCurrentState(world, missiles);
@@ -790,44 +799,46 @@ void QAgent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 	//loop over the q values, retraining to result in some degree of convergence, at least for this action
 	maxQ = -999999999;
 	lastMax = -999999999;
+	tempQVals.resize(_currentActionValues.size());
 	for(iterations = 0, convergence = false; iterations < 100 && !convergence; iterations++){
-		//classify the new current-state across all action-nets 
-		for(i = 0, tempMax = -1000000; i < _qNets.size(); i++){
+		//classify the new current-state across all actions
+		for(action = 0, tempMax = -1000000; action < NUM_ACTIONS; action++){
 			//classify the state we just entered, given the previous action
-			_qNets[i].Classify(_getCurrentState((Action)i));
-			//cout << "classified: " << _qNets[i].GetOutputs()[0].Output << endl;
+			_qNet.Classify(_getCurrentState((Action)action));
+			tempQVals[action] = _qNet.GetOutputs()[0].Output;
+			_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
 			//track the max action available in current state
-			if(_qNets[i].GetOutputs()[0].Output > tempMax){
-				tempMax = _qNets[i].GetOutputs()[0].Output;
-				tempAction = (Action)i;
+			if(tempQVals[action] > tempMax){
+				tempMax = tempQVals[action];
+				tempMaxAction = (Action)action;
 			}
 		}
 		lastMax = maxQ;
 		lastOptimalAction = optimalAction;
-		optimalAction = tempAction;
+		optimalAction = tempMaxAction;
 		maxQ = tempMax;
 
 		//detect convergence: if estimate is within 0.1 of previous estimate (verifying also that this is consistent for the same action)
 		netError = _absDiff(lastMax,maxQ);
-		//cout << "maxq " << maxQ << "  lastMax " << lastMax << "  netError " << netError << endl;
+		cout << "maxq " << maxQ << "  lastMax " << lastMax << "  netError " << netError << endl;
 		convergence = (lastOptimalAction == optimalAction) && (netError < 0.05);
 		if(!convergence){
 			//get the target q factor from the experienced reward given the last action
 			qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
 			//cout << "QTARGET: " << qTarget << endl;
 			//backpropagate the error and update the network weights for the last action (only)
-			_qNets[(int)CurrentAction].Classify(_getPreviousState((Action)CurrentAction)); //the net must be re-clamped to the previous state inputs and signals
-			_qNets[(int)CurrentAction].BackpropagateError(_getPreviousState((Action)CurrentAction), qTarget);
-			_qNets[(int)CurrentAction].UpdateWeights(_getPreviousState((Action)CurrentAction), qTarget);
+			_qNet.Classify(_getPreviousState((Action)CurrentAction)); //the net must be re-clamped to the previous state inputs and signals
+			_qNet.BackpropagateError(_getPreviousState((Action)CurrentAction), qTarget);
+			_qNet.UpdateWeights(_getPreviousState((Action)CurrentAction), qTarget);
 		}
 	}
 
 	_epochReward += qTarget;
 
 	//record this example
-	_recordExample(_getPreviousState((Action)CurrentAction), qTarget, _qNets[(int)CurrentAction].GetOutputs()[0].Output, CurrentAction);
+	_recordExample(_getPreviousState((Action)CurrentAction), qTarget, _currentActionValues[CurrentAction], CurrentAction);
 
-	//take the action with the highest q-value
+	//take the action with the current highest q-value
 	CurrentAction = optimalAction;
 
 	//e-greedy action selection: select the optimal action 80% of the time
@@ -850,12 +861,9 @@ void QAgent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 	_totalEpisodes++;
 
 	//testing: print the neural net weights
-	if(_episodeCount % 100 == 1){
-		for(i = 0; i < _qNets.size(); i++){
-			cout << "Action net " << GetActionStr((Action)i) << endl;
-			_qNets[i].PrintWeights();
-		}
-	}
+	//if(_episodeCount % 100 == 1){
+	//	_qNet.PrintWeights();
+	//}
 }
 
 
@@ -886,68 +894,50 @@ and must be clamped at 1.0, instead of feeding back 0.0 (the default return of c
 the goal state/location to some random location means the agent will try to learn that random transition. Learning must instead
 be restarted so the epochs are completely separated.
 */
-void QAgent::Update(const World* world, const vector<Missile>& missiles)
+void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 {
-	int i;
-	double maxQ, qTarget;
+	int action;
+	double maxQ, qTarget, prevEstimate;
 	Action optimalAction = ACTION_UP;
 
 	//Update agent's current state and state history
 	_updateCurrentState(world, missiles);
 
 	//classify the new current-state across all action-nets 
-	for(i = 0, maxQ = -10000000; i < _qNets.size(); i++){
+	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
 		//classify the state we just entered, given the previous action
-		_qNets[i].Classify(_getCurrentState((Action)i));
-		//cout << "classified: " << _qNets[i].GetOutputs()[0].Output << endl;
+		_qNet.Classify(_getCurrentState((Action)action));
+		cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
+		_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
 		//track the max action available in current state
-		if(_qNets[i].GetOutputs()[0].Output > maxQ){
-			maxQ = _qNets[i].GetOutputs()[0].Output;
-			optimalAction = (Action)i;
+		if(_qNet.GetOutputs()[0].Output > maxQ){
+			maxQ = _qNet.GetOutputs()[0].Output;
+			optimalAction = (Action)action;
 		}
-
-		/*
-		//experimental: diminishing momentum starts at 0.5, then decreases to 0.0
-		if(_totalEpisodes < 2000){
-			_qNets[i].SetMomentum( (2000 - _totalEpisodes) / 4000 );
-		}
-		*/
 	}
 
+	
 	//get the target q factor from the experienced reward given the last action
 	qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
-	//cout << "QTARGET: " << qTarget << endl;
+	cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
-	//An edge-case: When the agent just started or when it finds the goal and teleports randomly, don't learn and thereby correlate those unrelated states.
-	//if(_episodeCount == 0){
-	//for testing: to see if the agent has actually learned, and is not simply following the reward function, cease learning and observe its performance
-	/*
-	if(_episodeCount == 0 || _epochCount > 50){
-		CurrentAction = optimalAction;
-		agent.sufferedCollision = false;
-		_episodeCount++;
-		_totalEpisodes++;
-		_takeAction(CurrentAction);
-		return;
-	}
-	*/
-
 	//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 	//backpropagate the error and update the network weights for the last action (only)
-	_qNets[(int)CurrentAction].Classify(_getPreviousState((Action)CurrentAction)); //the net must be re-clamped to the previous state inputs and signals
-	//cout << "prev estimate: " << _qNets[(int)CurrentAction].GetOutputs()[0].Output << endl;
-	_qNets[(int)CurrentAction].BackpropagateError(_getPreviousState((Action)CurrentAction), qTarget);
-	_qNets[(int)CurrentAction].UpdateWeights(_getPreviousState((Action)CurrentAction), qTarget);
+	const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+	_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+	prevEstimate = _qNet.GetOutputs()[0].Output;
+	cout << "prev estimate: " << prevEstimate << endl;
+	_qNet.BackpropagateError(previousState, qTarget);
+	_qNet.UpdateWeights(previousState, qTarget);
 	//cout << "44" << endl;
 
-	if(_episodeCount > 10){
+	if(_episodeCount > 100){
 		//record this example
-		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, _qNets[(int)CurrentAction].GetOutputs()[0].Output, CurrentAction);
+		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 	}
 	
-	//_takeContinuousAction();
 
 	//take the action with the highest q-value
 	//LastAction = CurrentAction;
@@ -970,40 +960,17 @@ void QAgent::Update(const World* world, const vector<Missile>& missiles)
 	agent.sufferedCollision = false;
 	_episodeCount++;
 	_totalEpisodes++;
-	/*
-	if(_episodeCount % 4000 == 3999){ //random restart every 4000 episodes
-		agent.x = 5;
-		agent.y = 5;
-	}
-	*/
-	/*
-	//detect frozen agent
-	if(_getPreviousState()[SA_XPOS] == _getCurrentState()[SA_XPOS] && _getPreviousState()[SA_YPOS] == _getCurrentState()[SA_YPOS]){
-		_repetitionCounter++;
-		//restart agent if in same place more then 10 time steps
-		if(_repetitionCounter > 120){
-			_repetitionCounter = 0;
-			agent.x = 5 + rand() % 30;
-			agent.y = 0 + rand() % 10;
-		}
-	}
-	else{
-		_repetitionCounter = 0;
-	}
-	*/
 
 
 	//testing: print the neural net weights
-	if(_episodeCount % 100 == 1){
-		for(i = 0; i < _qNets.size(); i++){
-			cout << "Action net " << GetActionStr((Action)i) << endl;
-			_qNets[i].PrintWeights();
-		}
-	}
+	//if(_episodeCount % 100 == 1){
+		//_qNet.PrintWeights();
+	//}
 }
 
+
 //gets the ordinal distance between two doubles
-double QAgent::_absDiff(double d1, double d2)
+double Q2Agent::_absDiff(double d1, double d2)
 {
 	double d = d1 - d2;
 
@@ -1017,9 +984,7 @@ double QAgent::_absDiff(double d1, double d2)
 Learn q-values only when terminal states are reached: collisions, goals, death, etc.
 
 
-*/
-
-void QAgent::EpochalUpdate(const World* world, const vector<Missile>& missiles)
+void Q2Agent::EpochalUpdate(const World* world, const vector<Missile>& missiles)
 {
 	int i;
 	double maxQ, qTarget;
@@ -1089,6 +1054,7 @@ void QAgent::EpochalUpdate(const World* world, const vector<Missile>& missiles)
 		}
 	}
 }
+*/
 
 /*
 For this experiment, only update the agent's q-networks when the agent reaches a terminal 
@@ -1096,8 +1062,8 @@ state, or when the error term is very large.
 
 Result: Failure. There may still be potential in something like this, a heuristic for performing
 updates only when significant events occur. But this implementation was too divergent. 
-*/
-void QAgent::DiscriminativeUpdate(const World* world, const vector<Missile>& missiles)
+
+void Q2Agent::DiscriminativeUpdate(const World* world, const vector<Missile>& missiles)
 {
 	int i;
 	double maxQ, qTarget;
@@ -1163,7 +1129,7 @@ void QAgent::DiscriminativeUpdate(const World* world, const vector<Missile>& mis
 		}
 	}
 }
-
+*/
 
 /*
 Loose testing of offline learning just to see if if can work: run the agent for 
@@ -1184,8 +1150,8 @@ This experiment was very useful because it showed the instability/undecidability
 data itself does not globally converge under any architecture, the function itself must not be learnable/differentiable. Its
 very likely to be a piecewise function, etc.
 
-*/
-void QAgent::OfflineUpdate(const World* world, const vector<Missile>& missiles)
+
+void Q2Agent::OfflineUpdate(const World* world, const vector<Missile>& missiles)
 {
 	int pid;
 	int trainingEpisodes = 10000;
@@ -1283,13 +1249,13 @@ void QAgent::OfflineUpdate(const World* world, const vector<Missile>& missiles)
 		_totalEpisodes++;
 	}
 }
-
+*/
 
 /*
 The same implementation as vanilla Update() above, but the agent pushes each (state,qEstimate,qTarget) to
 a small, short-term batch of experiences. It then stochastically removes a random experience to train on.
-*/
-void QAgent::MinibatchUpdate(const World* world, const vector<Missile>& missiles)
+
+void Q2Agent::MinibatchUpdate(const World* world, const vector<Missile>& missiles)
 {
 	int i;
 	double maxQ, qTarget;
@@ -1348,15 +1314,15 @@ void QAgent::MinibatchUpdate(const World* world, const vector<Missile>& missiles
 	_qNets[(int)exp.PerformedAction].BackpropagateError(exp.BatchedState, exp.QTarget);
 	_qNets[(int)exp.PerformedAction].UpdateWeights(exp.BatchedState, exp.QTarget);
 	
-	/*
+	
 	//train over a collection from the batch
-	for(i = 0; i < 50; i++){
-		Experience& exp = _batch[ rand() % _batch.size() ];
-		_qNets[(int)exp.PerformedAction].Classify(exp.BatchedState); //the net must be re-clamped to the previous state inputs and signals
-		_qNets[(int)exp.PerformedAction].BackpropagateError(exp.BatchedState, exp.QTarget);
-		_qNets[(int)exp.PerformedAction].UpdateWeights(exp.BatchedState, exp.QTarget);
-	}
-	*/
+	//for(i = 0; i < 50; i++){
+	//	Experience& exp = _batch[ rand() % _batch.size() ];
+	//	_qNets[(int)exp.PerformedAction].Classify(exp.BatchedState); //the net must be re-clamped to the previous state inputs and signals
+	//	_qNets[(int)exp.PerformedAction].BackpropagateError(exp.BatchedState, exp.QTarget);
+	//	_qNets[(int)exp.PerformedAction].UpdateWeights(exp.BatchedState, exp.QTarget);
+	//}
+
 
 	//take the action with the highest q-value
 	//LastAction = CurrentAction;
@@ -1377,28 +1343,6 @@ void QAgent::MinibatchUpdate(const World* world, const vector<Missile>& missiles
 	//TODO: this member represents bad coupling
 	agent.sufferedCollision = false;
 	_episodeCount++;
-	/*
-	if(_episodeCount % 4000 == 3999){ //random restart every 4000 episodes
-		agent.x = 5;
-		agent.y = 5;
-	}
-	*/
-	/*
-	//detect frozen agent
-	if(_getPreviousState()[SA_XPOS] == _getCurrentState()[SA_XPOS] && _getPreviousState()[SA_YPOS] == _getCurrentState()[SA_YPOS]){
-		_repetitionCounter++;
-		//restart agent if in same place more then 10 time steps
-		if(_repetitionCounter > 120){
-			_repetitionCounter = 0;
-			agent.x = 5 + rand() % 30;
-			agent.y = 0 + rand() % 10;
-		}
-	}
-	else{
-		_repetitionCounter = 0;
-	}
-	*/
-
 
 	
 	//testing: print the neural net weights
@@ -1411,12 +1355,12 @@ void QAgent::MinibatchUpdate(const World* world, const vector<Missile>& missiles
 	
 
 }
+*/
 
 
 
 
-
-void QAgent::_takeAction(Action nextAction)
+void Q2Agent::_takeAction(Action nextAction)
 {
 	//map the action into some output
 	switch(nextAction){
@@ -1454,7 +1398,7 @@ void QAgent::_takeAction(Action nextAction)
 
 }
 
-const char* QAgent::GetActionStr(int i)
+const char* Q2Agent::GetActionStr(int i)
 {
 	switch((Action)i){
 		case ACTION_UP:
@@ -1481,43 +1425,29 @@ const char* QAgent::GetActionStr(int i)
 			return "ERROR UNKNOWN ACTION";
 			break;
 	}
-
 }
 
-void QAgent::PrintState()
+void Q2Agent::PrintState()
 {
 	const vector<double>& s = _getCurrentState(CurrentAction);
 	cout << _totalEpisodes << " Epoch " << _epochCount << " Episode " <<  _episodeCount << " Agent (" << agent.x << "x," << agent.y << "y) " << " <xVel yVel cos obstDist goalDist> ";
 	//cout << s[SA_XPOS] << " " << s[SA_YPOS] << " " << s[SA_XVELOCITY] << " ";
 	cout << agent.xVelocity << " " << agent.yVelocity << " " << s[SA_GOAL_COSINE] << " "  << s[SA_COLLISION_PROXIMITY] << " " << s[SA_GOAL_DIST] << endl;
+	cout << " reward: " << _lastEpochReward << endl;
+	cout << "Action (just executed): [" << CurrentAction << "] " << GetActionStr(CurrentAction) << endl;
+	cout << "Outputs:" << endl;
+	for(int i = 0; i < _currentActionValues.size(); i++){
+		if(i == CurrentAction){
+			cout << GetActionStr(i) << "\t" << _currentActionValues[i] << " <-- current action " << endl;
+		}
+		else{
+			cout << GetActionStr(i) << "\t" << _currentActionValues[i] << endl;
+		}
+	}
 	//print the epoch measures; ideally all should decrease with training, and avg reward should increase
 	cout << "Last epoch performance:  collision rate: " << ((double)((int)(_lastEpochCollisionRate * 1000)) / 100) << "%  #actions: " << _lastEpochActionCount;
-	cout << " reward: " << _lastEpochReward << endl;
-
-	cout << "Action (just executed): " << GetActionStr(CurrentAction) << endl;
-	for(int i = 0; i < _qNets.size(); i++){
-		//_qNets[i].PrintWeights();
-		cout << "Output  " << GetActionStr(i) << ": " << _qNets[i].GetOutputs()[0].Output << "  ";
-	}
-
 	cout << endl;
 }
-
-/*
-
-*/
-void QAgent::Train()
-{
-	
-	
-	
-
-
-
-
-
-}
-
 
 
 

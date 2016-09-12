@@ -1,10 +1,13 @@
 #ifndef WORLD_HPP
 #define WORLD_HPP
 
-#include "QUtil.hpp"
-#include "QAgent.hpp"
+#include "Q2Util.hpp"
+#include "Q2Agent.hpp"
+class Q2Agent;
 
-class QAgent;
+//#include "QUtil.hpp"
+//#include "QAgent.hpp"
+//class QAgent;
 
 class World{
 	private:
@@ -16,7 +19,7 @@ class World{
 		void _resetTraversalFlags();
 		void _setRandomGoalLocation();
 		void _setRandomAgentStartLocation(Agent& agent);
-		void _restartAgent(QAgent& qagent);
+		void _restartAgent(Q2Agent* qagent);
 	public:
 		World();
 		World(int x, int y);
@@ -30,12 +33,12 @@ class World{
 		//This may not belong as a world property, but makes it easily accessible
 		double MaxDistanceToGoal;
 		void ResizeWorld(int x, int y);
-		//void PrintState(vector<Missile>& missiles, DiscreteQAgent& qagent);
+		//void PrintState(vector<Missile>& missiles, DiscreteQ2Agent& qagent);
 		void InitializeWorld(vector<Missile>& missiles, Agent& agent);
 		void InitRandomMissiles(vector<Missile>& missiles, int numMissiles);
-		void UpdateWorld(vector<Missile>& missiles, QAgent& agent, double timeStep);
+		void Update(vector<Missile>& missiles, Q2Agent* agent, double timeStep);
 		bool IsValidPosition(int x, int y) const;
-		void DrawWorld(vector<Missile>& missiles, Agent& agent);
+		void Draw(vector<Missile>& missiles, Agent& agent);
 		WorldCell& GetCell(int x, int y);
 		const WorldCell& GetCell(int x, int y) const;
 };
