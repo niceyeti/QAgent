@@ -81,6 +81,13 @@ Q2Agent::Q2Agent(int initX, int initY)
 	if(!_outputFile.is_open()){
 		cout << "ERROR could not open history.txt file" << endl;
 	}
+
+	_prototypeFile.open("prototypes.csv",ios::out);
+	if(!_prototypeFile.is_open()){
+		cout << "ERROR could not open prototype.csv file" << endl;
+	}
+
+
 	//write the headers. not using csv for now, oh well...
 	//_outputFile << "<comma-delimited state values>,qTarget,qEstimate,ActionString" << endl;
 
@@ -766,7 +773,7 @@ void Q2Agent::_recordExample(const vector<double>& state, double qTarget, double
 }
 
 //TODO: this is pretty disorganized, esp wrt the World
-void Q2Agent::ResetEpoch()
+void Q2Agent::ResetEpoch(double terminalReward)
 {
 	//store performance given the last epoch
 	_lastEpochCollisionRate = EpochCollisionCount / (double)_episodeCount;
@@ -780,6 +787,37 @@ void Q2Agent::ResetEpoch()
 	EpochGoalCount = 0;
 	EpochActionCount = 0;
 	EpochCollisionCount = 0;
+
+	_storeTerminalState(_getCurrentState((Action)CurrentAction),terminalReward);
+}
+
+//Just a wrapper. Let's the agent determine its terminal state, but client passes in terminal value.
+void Q2Agent::StoreTerminalState(double terminalReward)
+{
+	_storeTerminalState(_getCurrentState((Action)CurrentAction),terminalReward);
+}
+
+/*
+For testing/experimentation: log the terminal state vectors.
+
+The motivation is to use the terminal states as prototypes of +/-1
+labelled vectors, as a basis for learning the reward function itself.
+
+For instance, agent crashes when state vector is x1,x2,x3 log this as x1,x2,x3,-1.
+this way the agent could periodically (after logging many epochs) learn the terminal-prototypes
+to determine the reward function parameters.
+
+
+@state: A vector of state data which was held when the agent reached some terminal condition (a snapshot).
+@terminalValue: Some value, which for now ought to be just +/-1. The values could be a scalar, but its
+subject to experiment whether or not that will help at all.
+*/
+void Q2Agent::_storeTerminalState(const vector<double>& state, double terminalValue)
+{
+	for(int i = 0; i < state.size(); i++){
+		_prototypeFile << state[i] << ",";
+	}
+	_prototypeFile << terminalValue << endl;
 }
 
 /*

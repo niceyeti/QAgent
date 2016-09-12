@@ -159,7 +159,7 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 
 	//allows the agent to find the goal a few times before resetting
 	if(qagent->EpochGoalCount >= qagent->GoalResetThreshold){
-		_restartAgent(qagent);
+		_restartAgent(qagent,1.0);
 	}
 	else{
 		newX = qagent->agent.x + qagent->agent.xVelocity * timeStep;	
@@ -168,7 +168,8 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 		if(!IsValidPosition(newX,newY) || GetCell(newX,newY).isObstacle){
 			qagent->agent.sufferedCollision = true;
 			qagent->EpochCollisionCount++;
-			//_restartAgent(qagent);
+			qagent->StoreTerminalState(-1.0); //ugly hack: store terminal state w/out resetting the agent
+			//_restartAgent(qagent,-1.0);
 		}
 		//else{
 
@@ -219,12 +220,12 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 }
 
 //wrapper util for resetting the agent and restarting it in a random start location
-void World::_restartAgent(Q2Agent* qagent)
+void World::_restartAgent(Q2Agent* qagent, double terminalValue)
 {
 	_setRandomGoalLocation();
 	_setRandomAgentStartLocation(qagent->agent);
 	_resetTraversalFlags();
-	qagent->ResetEpoch();
+	qagent->ResetEpoch(terminalValue);
 }
 
 

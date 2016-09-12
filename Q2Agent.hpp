@@ -51,6 +51,7 @@ class Q2Agent{
 		double _gamma;
 		string _historyFilePath;
 		fstream _outputFile;
+		fstream _prototypeFile; //for storing state vectors reresenting terminal states (goal-reached, agent crashed, etc)
 		vector<vector<vector<double> > > _stateHistory; //likely only two states for now: t and t+1
 		//in this implementation, the agent has only a single q network		
 		MultilayerNetwork _qNet;
@@ -71,6 +72,8 @@ class Q2Agent{
 		double _getCurrentRewardValue(const World* world, const vector<Missile>& missiles);
 		void _updateCurrentState(const World* world, const vector<Missile>& missiles);
 
+		//experimental logging
+		void _storeTerminalState(const vector<double>& state, double terminalValue);
 		void _recordExample(const vector<double>& state, double qTarget, double qEstimate, Action action);
 
 		Action _getStochasticOptimalAction();
@@ -96,7 +99,8 @@ class Q2Agent{
 		double EpochActionCount;
 		double EpochCollisionCount;
 		double GoalResetThreshold;
-		void ResetEpoch();
+		void StoreTerminalState(double terminalValue);
+		void ResetEpoch(double terminalValue);
 		void PrintCurrentStateEstimates();
 		const char* GetActionStr(int i);
 		void LoopedUpdate(const World* world, const vector<Missile>& missiles);	

@@ -19,7 +19,7 @@ class World{
 		void _resetTraversalFlags();
 		void _setRandomGoalLocation();
 		void _setRandomAgentStartLocation(Agent& agent);
-		void _restartAgent(Q2Agent* qagent);
+		void _restartAgent(Q2Agent* qagent, double terminalValue);
 	public:
 		World();
 		World(int x, int y);
