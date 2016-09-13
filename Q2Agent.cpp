@@ -57,14 +57,14 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_currentActionValues.resize(NUM_ACTIONS); //for caching the q-values per action, instead of re-calling Classify() on the net, per action
 
 	//init the neural networks, one for each action
-	_qNet.BuildNet(2, STATE_DIMENSION, 24, 1); //this is just generic, for testing;
+	_qNet.BuildNet(2, STATE_DIMENSION, 8, 1); //this is just generic, for testing;
 	//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
 	_qNet.SetHiddenLayerFunction(TANH);
 	_qNet.SetOutputLayerFunction(LINEAR);
 	_qNet.InitializeWeights();
 	_qNet.SetEta(_eta);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
-	_qNet.SetMomentum(0.2);
+	_qNet.SetMomentum(0.0);
 
 	//init the state history; only t and t+1 for now
 	_stateHistory.resize(2);
@@ -601,7 +601,7 @@ Also note that when experimenting, certain state attributes can be essentially s
 
 NOTE: This returns the reward relative to **CurrentAction** and current velocity.
 */
-double Q2Agent::_getCurrentRewardValue(const World* world, const vector<Missile>& missiles)
+double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles)
 {
 	int x_prime, y_prime;
 	double reward = 0.0;
@@ -610,6 +610,55 @@ double Q2Agent::_getCurrentRewardValue(const World* world, const vector<Missile>
 	double COLLISION_COST = -10.0;
 	//double REPETITION_COST = -2.0;
 	double GOAL_REWARD = 10.0;
+	//the unknown coefficients; hard-coding is cheating, the point is to learn these
+	double coef_GoalDist, coef_Cosine, coef_CollisionProximity;
+	//coef_GoalDist = -10.0 / world->MaxDistanceToGoal;
+	//coef_Cosine = 5.0;
+	//coef_CollisionProximity = ; //not defined; for the hardcoded params, see below; the negation of max distance worked great
+	
+	coef_Cosine = -23.55;
+	coef_CollisionProximity = 42.76;
+	coef_GoalDist = 48.77;
+	//normalize the values to help prevent divergence
+	coef_Cosine /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
+	coef_CollisionProximity /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
+	coef_GoalDist /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
+
+	//check if last action caused a collision
+	if(agent.sufferedCollision){
+		cout << "COLLISION ep=" << _episodeCount << endl;
+		//reward += COLLISION_COST;
+	}
+
+	if(world->GetCell(agent.x, agent.y).isGoal){
+		cout << "FOUND GOAL!" << endl;
+		//reward += GOAL_REWARD;
+	}
+	else{
+		//goal distance scaled by 10.0/max-distance provides value of distance cost; this gives a cost in range [0,-10]
+		reward += (coef_GoalDist * _stateHistory[_t][(int)CurrentAction][SA_GOAL_DIST]);
+	}
+
+	//add in a punishment for distance to nearest obstacle on heading (experimental; NOTE this requires state vector collision proximity attribute has been set)
+	//reward += (-MAX_COLLISION_PROXIMITY_RANGE + _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
+	reward += (coef_CollisionProximity * _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
+
+	//update the cosine-based reward
+	reward += (coef_Cosine * _stateHistory[_t][CurrentAction][SA_GOAL_COSINE]);
+
+	//cout << "reward: " << reward << endl;
+	return reward;
+}
+
+double Q2Agent::_getCurrentRewardValue_Manual(const World* world, const vector<Missile>& missiles)
+{
+	int x_prime, y_prime;
+	double reward = 0.0;
+	//TODO: better to define rewards as positive/negative or all negative? all negative seems more consistent.
+	//double MISSILE_DAMAGE_COST = -10.0;
+	double COLLISION_COST = 0.0;
+	//double REPETITION_COST = -2.0;
+	double GOAL_REWARD = 0.0;
 	//double RADAR_RADIUS = 8.0;
 
 	/*
@@ -675,6 +724,7 @@ double Q2Agent::_getCurrentRewardValue(const World* world, const vector<Missile>
 	return reward;
 }
 
+
 //just normalizes the input vectors before calculating their cosine similarity
 double Q2Agent::_normalizedCosSim(double x1, double y1, double x2, double y2)
 {
@@ -737,7 +787,7 @@ double Q2Agent::_getTargetQValue(const vector<vector<WorldCell> >& world, const 
 {
 	double qTarget = 0.0;
 
-	qTarget = _getCurrentRewardValue(world, missiles) + _gamma * _getMaxQValue();
+	qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * _getMaxQValue();
 
 	return ;
 }
@@ -827,7 +877,7 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 {
 	bool convergence = false;
 	int action, iterations;
-	double netError = 0.0, maxQ = 0.0, tempMax = 0.0, lastMax = 0.0, qTarget = 0.0;
+	double netError = 0.0, maxQ = 0.0, tempMax = 0.0, lastMax = 0.0, qTarget = 0.0, reward = 0.0;
 	vector<double> tempQVals;
 	Action lastOptimalAction = ACTION_DOWN, optimalAction = ACTION_LEFT, tempMaxAction = ACTION_RIGHT;
 
@@ -862,8 +912,9 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 		convergence = (lastOptimalAction == optimalAction) && (netError < 0.05);
 		if(!convergence){
 			//get the target q factor from the experienced reward given the last action
-			qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
-			//cout << "QTARGET: " << qTarget << endl;
+			reward = _getCurrentRewardValue_Manual(world, missiles);
+			qTarget = reward + _gamma * maxQ;
+			cout << "QTARGET: " << qTarget << endl;
 			//backpropagate the error and update the network weights for the last action (only)
 			_qNet.Classify(_getPreviousState((Action)CurrentAction)); //the net must be re-clamped to the previous state inputs and signals
 			_qNet.BackpropagateError(_getPreviousState((Action)CurrentAction), qTarget);
@@ -956,7 +1007,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 
 	
 	//get the target q factor from the experienced reward given the last action
-	qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
+	qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
 	cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
@@ -1044,7 +1095,7 @@ void Q2Agent::EpochalUpdate(const World* world, const vector<Missile>& missiles)
 	}
 
 	//get the target q factor from the experienced reward given the last action
-	qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
+	qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
 	//cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 
@@ -1123,7 +1174,7 @@ void Q2Agent::DiscriminativeUpdate(const World* world, const vector<Missile>& mi
 	}
 
 	//get the target q factor from the experienced reward given the last action
-	qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
+	qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
 	//cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
@@ -1262,7 +1313,7 @@ void Q2Agent::OfflineUpdate(const World* world, const vector<Missile>& missiles)
 		}
 
 		//get the target q factor from the experienced reward given the last action
-		qTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
+		qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
 		//cout << "QTARGET: " << qTarget << endl;
 		_epochReward += qTarget;
 
@@ -1340,7 +1391,7 @@ void Q2Agent::MinibatchUpdate(const World* world, const vector<Missile>& missile
 	_qNets[(int)CurrentAction].Classify(_getPreviousState((Action)CurrentAction));
 	_batch[_batchIndex].QEstimate = _qNets[(int)CurrentAction].GetOutputs()[0].Output;
 	//save the experienced reward as the qTarget in the batched experience
-	_batch[_batchIndex].QTarget = _getCurrentRewardValue(world, missiles) + _gamma * maxQ;
+	_batch[_batchIndex].QTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
 	_epochReward += _batch[_batchIndex].QTarget;
 	//save the action that brought us here
 	_batch[_batchIndex].PerformedAction = CurrentAction;

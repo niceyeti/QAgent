@@ -69,7 +69,8 @@ class Q2Agent{
 		double _getMissileLikelihood(const vector<Missile>& missiles);
 		double _nearestObstacleDist(const World* world);
 		double _nearestObjectOnHeading(double headingX, double headingY, const World* world, const vector<Missile>& missiles);
-		double _getCurrentRewardValue(const World* world, const vector<Missile>& missiles);
+		double _getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles);
+		double _getCurrentRewardValue_Manual(const World* world, const vector<Missile>& missiles);
 		void _updateCurrentState(const World* world, const vector<Missile>& missiles);
 
 		//experimental logging
