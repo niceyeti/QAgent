@@ -50,21 +50,21 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.02;
+	_eta = 0.05;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time index
 	_currentActionValues.resize(NUM_ACTIONS); //for caching the q-values per action, instead of re-calling Classify() on the net, per action
 
 	//init the neural networks, one for each action
-	_qNet.BuildNet(2, STATE_DIMENSION, 8, 1); //this is just generic, for testing;
+	_qNet.BuildNet(2, STATE_DIMENSION, 12, 1); //this is just generic, for testing;
 	//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
 	_qNet.SetHiddenLayerFunction(TANH);
 	_qNet.SetOutputLayerFunction(LINEAR);
 	_qNet.InitializeWeights();
 	_qNet.SetEta(_eta);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
-	_qNet.SetMomentum(0.0);
+	_qNet.SetMomentum(0.5);
 
 	//init the state history; only t and t+1 for now
 	_stateHistory.resize(2);
@@ -595,7 +595,7 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	//TODO: better to define rewards as positive/negative or all negative? all negative seems more consistent.
 	//double MISSILE_DAMAGE_COST = -10.0;
 	double COLLISION_COST = -5.0;
-	double REPETITION_COST = -0.5;
+	double REPETITION_COST = -1.0;
 	double GOAL_REWARD = 5.0;
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
 	double coef_GoalDist, coef_Cosine, coef_CollisionProximity;
