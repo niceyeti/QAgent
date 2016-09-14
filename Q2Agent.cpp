@@ -50,7 +50,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.05;
+	_eta = 0.1;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time index
