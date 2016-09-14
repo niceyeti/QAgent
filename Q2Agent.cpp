@@ -50,7 +50,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.04;
+	_eta = 0.02;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time index
@@ -159,11 +159,15 @@ TODO: Is this desirable over zero-mean? The only reason I'm keeping this around 
 */
 void Q2Agent::_normalizeStateVector(const World* world, vector<double>& state)
 {
+
+	state[SA_GOAL_COSINE] = state[SA_GOAL_COSINE] - 1.0;
 	//note cosine attribute is not normalized, since cosine is inherently normalized
 	//cout << "collision proximity: " << 	state[SA_COLLISION_PROXIMITY] << endl;
-	state[SA_COLLISION_PROXIMITY] = 1.0 - (2.0 * ((double)MAX_COLLISION_PROXIMITY_RANGE - state[SA_COLLISION_PROXIMITY])) / (double)MAX_COLLISION_PROXIMITY_RANGE;
+	//collision proximity is scaled to [-1.0,1.0], where -1.0 is worst (immediate collision) and 1.0 is greatest distance to an obstacle
+	state[SA_COLLISION_PROXIMITY] = 0.0 - (2.0 * ((double)MAX_COLLISION_PROXIMITY_RANGE - state[SA_COLLISION_PROXIMITY])) / (double)MAX_COLLISION_PROXIMITY_RANGE;
 	//cout << "AFTER: " << state[SA_COLLISION_PROXIMITY] << endl;
-	state[SA_GOAL_DIST] = 1.0 - (2.0 * state[SA_GOAL_DIST]) / world->MaxDistanceToGoal;
+	//goal distance is scaled to range [-1.0,1.0] with -1.0 being worst (greatest distance) and 1.0 being the best
+	state[SA_GOAL_DIST] = 0.0 - (2.0 * state[SA_GOAL_DIST]) / world->MaxDistanceToGoal;
 }
 
 /*
@@ -350,7 +354,7 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 	//set all the action-unique state values (the state estimate, given the action) for current time _t
 	for(int action = 0; action < _stateHistory[_t].size(); action++){
 	
-		//get the velocity/heading specific state values
+		//get the velocity/heading state-specific values
 		switch(action){
 			case ACTION_UP:
 				xHeading = 0;
@@ -581,25 +585,8 @@ bool Q2Agent::_isWallCollision(const World* world)
 }
 
 /*
-Get the externally-determined reward value for the agent's current state.
-Currently includes:
-	-bonks into walls (negative)
-	-found goal (positive)
-	-hit by missle (negative)
-
-TODO: This likely belongs in the World, such that the World punishes/rewards the agent externally.
-
-Notes: How the reward is characterized has a large effect on the agent's behavior. Do not expect the
-network to detect the relative weight of different reward attributes (distance, direction, etc)! I'm
-not sure the quality they must have, but in continuous states the goal-reward is not magically back propagated
-to previous states, as for discrete models. The rewards must be more instantaneous, and to the point, must
-be scaled to roughly equal ranges. For instance, if very close to the goal, then direction should have more weight.
-Think about such dependencies. The point here is that the reward function, especially in continuous spaces,
-is worthy of study, and how it behaves directly affects the stability of the algorithm.
-
-Also note that when experimenting, certain state attributes can be essentially shut off by setting their associated reward to zero.
-
-NOTE: This returns the reward relative to **CurrentAction** and current velocity.
+Some experimenting with learning the reward function values, which is the real goal of 
+reinforcement learning.
 */
 double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles)
 {
@@ -607,22 +594,22 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	double reward = 0.0;
 	//TODO: better to define rewards as positive/negative or all negative? all negative seems more consistent.
 	//double MISSILE_DAMAGE_COST = -10.0;
-	double COLLISION_COST = -10.0;
-	//double REPETITION_COST = -2.0;
-	double GOAL_REWARD = 10.0;
+	double COLLISION_COST = -5.0;
+	double REPETITION_COST = -0.5;
+	double GOAL_REWARD = 5.0;
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
 	double coef_GoalDist, coef_Cosine, coef_CollisionProximity;
 	//coef_GoalDist = -10.0 / world->MaxDistanceToGoal;
 	//coef_Cosine = 5.0;
 	//coef_CollisionProximity = ; //not defined; for the hardcoded params, see below; the negation of max distance worked great
 	
-	coef_Cosine = -23.55;
-	coef_CollisionProximity = 42.76;
-	coef_GoalDist = 48.77;
+	coef_Cosine = 1;
+	coef_CollisionProximity = 1;
+	coef_GoalDist = 1;
 	//normalize the values to help prevent divergence
-	coef_Cosine /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
-	coef_CollisionProximity /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
-	coef_GoalDist /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
+	//coef_Cosine /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
+	//coef_CollisionProximity /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
+	//coef_GoalDist /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
 
 	//check if last action caused a collision
 	if(agent.sufferedCollision){
@@ -637,6 +624,10 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	else{
 		//goal distance scaled by 10.0/max-distance provides value of distance cost; this gives a cost in range [0,-10]
 		reward += (coef_GoalDist * _stateHistory[_t][(int)CurrentAction][SA_GOAL_DIST]);
+	}
+
+	if(world->GetCell(agent.x,agent.y).isTraversed){
+		reward += REPETITION_COST;
 	}
 
 	//add in a punishment for distance to nearest obstacle on heading (experimental; NOTE this requires state vector collision proximity attribute has been set)
@@ -656,9 +647,9 @@ double Q2Agent::_getCurrentRewardValue_Manual(const World* world, const vector<M
 	double reward = 0.0;
 	//TODO: better to define rewards as positive/negative or all negative? all negative seems more consistent.
 	//double MISSILE_DAMAGE_COST = -10.0;
-	double COLLISION_COST = 0.0;
+	double COLLISION_COST = -20.0;
 	//double REPETITION_COST = -2.0;
-	double GOAL_REWARD = 0.0;
+	double GOAL_REWARD = 20.0;
 	//double RADAR_RADIUS = 8.0;
 
 	/*
@@ -906,13 +897,16 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 		optimalAction = tempMaxAction;
 		maxQ = tempMax;
 
-		//detect convergence: if estimate is within 0.1 of previous estimate (verifying also that this is consistent for the same action)
+		//get the target q factor from the experienced reward given the last action
+		//reward = _getCurrentRewardValue_Manual(world, missiles);
+		reward = _getCurrentRewardValue_Learnt(world, missiles);
+		cout << "reward: " << reward << endl;
+
+		//detect convergence: if estimate is within 0.1 of previous estimate (verifying also that this is consistently the same action)
 		netError = _absDiff(lastMax,maxQ);
 		cout << "maxq " << maxQ << "  lastMax " << lastMax << "  netError " << netError << endl;
 		convergence = (lastOptimalAction == optimalAction) && (netError < 0.05);
 		if(!convergence){
-			//get the target q factor from the experienced reward given the last action
-			reward = _getCurrentRewardValue_Manual(world, missiles);
 			qTarget = reward + _gamma * maxQ;
 			cout << "QTARGET: " << qTarget << endl;
 			//backpropagate the error and update the network weights for the last action (only)
@@ -951,7 +945,7 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 
 	//testing: print the neural net weights
 	//if(_episodeCount % 100 == 1){
-	//	_qNet.PrintWeights();
+		_qNet.PrintWeights();
 	//}
 }
 
@@ -1007,7 +1001,8 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 
 	
 	//get the target q factor from the experienced reward given the last action
-	qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
+	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
+	qTarget = _getCurrentRewardValue_Learnt(world, missiles) + _gamma * maxQ;
 	cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
