@@ -875,6 +875,11 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 	//Update agent's current state and state history
 	_updateCurrentState(world, missiles);
 
+	//get the target q factor from the experienced reward given the last action
+	//reward = _getCurrentRewardValue_Manual(world, missiles);
+	reward = _getCurrentRewardValue_Learnt(world, missiles);
+	cout << "reward: " << reward << endl;
+
 	//loop over the q values, retraining to result in some degree of convergence, at least for this action
 	maxQ = -999999999;
 	lastMax = -999999999;
@@ -896,11 +901,6 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 		lastOptimalAction = optimalAction;
 		optimalAction = tempMaxAction;
 		maxQ = tempMax;
-
-		//get the target q factor from the experienced reward given the last action
-		//reward = _getCurrentRewardValue_Manual(world, missiles);
-		reward = _getCurrentRewardValue_Learnt(world, missiles);
-		cout << "reward: " << reward << endl;
 
 		//detect convergence: if estimate is within 0.1 of previous estimate (verifying also that this is consistently the same action)
 		netError = _absDiff(lastMax,maxQ);
@@ -1517,7 +1517,7 @@ void Q2Agent::PrintState()
 	cout << _totalEpisodes << " Epoch " << _epochCount << " Episode " <<  _episodeCount << " Agent (" << agent.x << "x," << agent.y << "y) " << " <xVel yVel cos obstDist goalDist> ";
 	//cout << s[SA_XPOS] << " " << s[SA_YPOS] << " " << s[SA_XVELOCITY] << " ";
 	cout << agent.xVelocity << " " << agent.yVelocity << " " << s[SA_GOAL_COSINE] << " "  << s[SA_COLLISION_PROXIMITY] << " " << s[SA_GOAL_DIST] << endl;
-	cout << " reward: " << _lastEpochReward << endl;
+	cout << " Last Epoch reward: " << _lastEpochReward << endl;
 	cout << "Action (just executed): [" << CurrentAction << "] " << GetActionStr(CurrentAction) << endl;
 	cout << "Outputs:" << endl;
 	for(int i = 0; i < _currentActionValues.size(); i++){
