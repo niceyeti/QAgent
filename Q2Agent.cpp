@@ -50,10 +50,10 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.1;
+	_eta = 0.2;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
-	_t = 0; //time index
+	_t = 0; //time series index
 	_currentActionValues.resize(NUM_ACTIONS); //for caching the q-values per action, instead of re-calling Classify() on the net, per action
 
 	//init the neural networks, one for each action
@@ -595,7 +595,7 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	//TODO: better to define rewards as positive/negative or all negative? all negative seems more consistent.
 	//double MISSILE_DAMAGE_COST = -10.0;
 	double COLLISION_COST = -5.0;
-	double REPETITION_COST = -1.0;
+	double REPETITION_COST = 0.0;
 	double GOAL_REWARD = 5.0;
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
 	double coef_GoalDist, coef_Cosine, coef_CollisionProximity;
