@@ -162,6 +162,7 @@ void Q2Agent::_updateCurrentState(const World* world, const vector<Missile>& mis
 	//update the time step; this is just an index for _stateHistory for now
 	_t = (_t + 1) % (int)_stateHistory.size();
 	
+	//update agent's estimate of its recent locations
 	_updateLocationMemory();
 	
 	//derive current state estimate, per each possible action
@@ -396,22 +397,22 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 			case ACTION_UP:
 				xHeading = 0;
 				yHeading = 1.0;
-			break;
+				break;
 			case ACTION_RIGHT:
 				xHeading = 1.0;
 				yHeading = 0;
-			break;
+				break;
 			case ACTION_DOWN:
 				xHeading = 0;
 				yHeading = -1.0;
-			break;
+				break;
 			case ACTION_LEFT:
 				xHeading = -1.0;
 				yHeading = 0;
-			break;
+				break;
 			default:
 				cout << "ERROR action not found in _updateState()" << endl;
-			break;				
+				break;				
 		}
 		//set the velocity values
 		//_stateHistory[_t][action][SA_XVELOCITY] = xHeading;
@@ -641,18 +642,15 @@ reinforcement learning.
 */
 double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles)
 {
-	int x_prime, y_prime;
+	//int x_prime, y_prime;
 	double reward = 0.0;
 	//TODO: better to define rewards as positive/negative or all negative? all negative seems more consistent.
 	//double MISSILE_DAMAGE_COST = -10.0;
-	double COLLISION_COST = -5.0;
-	double REPETITION_COST = 0.0;
-	double GOAL_REWARD = 5.0;
+	//double COLLISION_COST = -5.0;
+	//double REPETITION_COST = 0.0;
+	//double GOAL_REWARD = 5.0;
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
 	double coef_GoalDist, coef_Cosine, coef_CollisionProximity, coef_Visited_Cosine;
-	//coef_GoalDist = -10.0 / world->MaxDistanceToGoal;
-	//coef_Cosine = 5.0;
-	//coef_CollisionProximity = ; //not defined; for the hardcoded params, see below; the negation of max distance worked great
 
 	coef_Visited_Cosine = 0.5; // the coefficient for the similarity of the agent's current location versus its where it has visited
 	coef_Cosine = 1;
@@ -1040,7 +1038,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	double maxQ, qTarget, prevEstimate;
 	Action optimalAction = ACTION_UP;
 
-	//Update agent's current state and state history
+	//Update agent's current state and state history for all possible actions
 	_updateCurrentState(world, missiles);
 
 	//classify the new current-state across all action-nets 
@@ -1075,7 +1073,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	//cout << "44" << endl;
 
 	if(_episodeCount > 100){
-		//record this example
+		//record this example; this is useful for both replay-based learning and for data analysis
 		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 	}
 	
