@@ -13,7 +13,9 @@
 #include <cstdio>
 
 #define _USE_MATH_DEFINES
-
+#ifndef M_PI
+	#define M_PI 3.141592653589793238462643383279
+#endif
 
 /*
 An implementation of approximate q-learning for discrete state/action spaces,

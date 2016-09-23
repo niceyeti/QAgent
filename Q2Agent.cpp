@@ -50,7 +50,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.2;
+	_eta = 0.1;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time series index
@@ -64,7 +64,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_qNet.InitializeWeights();
 	_qNet.SetEta(_eta);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
-	_qNet.SetMomentum(0.5);
+	_qNet.SetMomentum(0.2);
 
 	//init the state history; only t and t+1 for now
 	_stateHistory.resize(2);
@@ -75,6 +75,14 @@ Q2Agent::Q2Agent(int initX, int initY)
 		}
 	}
 
+	//configure the location hisorian to hold up to k previous locations
+	_recentLocations.resize(NUM_MEMORIZED_LOCATIONS, std::pair<double,double>(0,0));
+	_locationRingIndex = 0;
+	_locationEma.first = 0.0;
+	_locationEma.second = 0.0;
+	_locationAvg.first = 0.0;
+	_locationAvg.second = 0.0;
+	
 	//set up the historian
 	_historyFilePath = "./history.txt";
 	_outputFile.open(_historyFilePath,ios::out);
@@ -86,7 +94,6 @@ Q2Agent::Q2Agent(int initX, int initY)
 	if(!_prototypeFile.is_open()){
 		cout << "ERROR could not open prototype.csv file" << endl;
 	}
-
 
 	//write the headers. not using csv for now, oh well...
 	//_outputFile << "<comma-delimited state values>,qTarget,qEstimate,ActionString" << endl;
@@ -121,10 +128,41 @@ const vector<double>& Q2Agent::_getCurrentState(Action action)
 	return _stateHistory[ _t ][(int)action];
 }
 
+/*
+Updates the estimate of the mean location over the last k-visited locations. This gives the agent
+a mechanism to aproximate places it has been recently. Here I set both an arithmetic average value
+and an exponential moving average. 
+*/
+void Q2Agent::_updateLocationMemory()
+{
+	//update recent location knowledge: locations and the moving average of previous locations
+	_locationRingIndex = (_locationRingIndex + 1) % _recentLocations.size();
+	_recentLocations[_locationRingIndex].first = agent.x;
+	_recentLocations[_locationRingIndex].second = agent.y;
+	//update the exp moving average of previous locations; note this is a recursive form
+	double alpha = 0.5;
+	_locationEma.first = alpha * _recentLocations[max(_locationRingIndex - 1, 0)].first + (1 - alpha) * _locationEma.first;
+	_locationEma.second = alpha * _recentLocations[max(_locationRingIndex - 1, 0)].second + (1 - alpha) * _locationEma.second;
+	//_locationEma.first = alpha * _recentLocations[max(_locationRingIndex - 1, 0)].first + (1 - alpha) * _recentLocations[ max(_locationRingIndex - 2, 0)].first;
+	//_locationEma.second = alpha * _recentLocations[max(_locationRingIndex - 1, 0)].second + (1 - alpha) * _recentLocations[ max(_locationRingIndex - 2, 0)].second;
+	//update the arithmetic average over previous k locations, giving the centroid of previous k locations
+	_locationAvg.first = _locationAvg.second = 0.0;
+	for(int i = 0; i < _recentLocations.size(); i++){
+		if(i != _locationRingIndex){ //excludes current location from estimate of past locations
+			_locationAvg.first += _recentLocations[i].first;
+			_locationAvg.second += _recentLocations[i].second;
+		}
+	}
+	_locationAvg.first /= ((double)_recentLocations.size() - 1.0);
+	_locationAvg.second /= ((double)_recentLocations.size() - 1.0);
+}
+
 void Q2Agent::_updateCurrentState(const World* world, const vector<Missile>& missiles)
 {
 	//update the time step; this is just an index for _stateHistory for now
 	_t = (_t + 1) % (int)_stateHistory.size();
+	
+	_updateLocationMemory();
 	
 	//derive current state estimate, per each possible action
 	_deriveCurrentState(world, missiles);
@@ -159,8 +197,8 @@ TODO: Is this desirable over zero-mean? The only reason I'm keeping this around 
 */
 void Q2Agent::_normalizeStateVector(const World* world, vector<double>& state)
 {
-
 	state[SA_GOAL_COSINE] = state[SA_GOAL_COSINE] - 1.0;
+	state[SA_RECENT_LOCATION_COSINE] = state[SA_RECENT_LOCATION_COSINE] - 1.0;
 	//note cosine attribute is not normalized, since cosine is inherently normalized
 	//cout << "collision proximity: " << 	state[SA_COLLISION_PROXIMITY] << endl;
 	//collision proximity is scaled to [-1.0,1.0], where -1.0 is worst (immediate collision) and 1.0 is greatest distance to an obstacle
@@ -353,7 +391,6 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 
 	//set all the action-unique state values (the state estimate, given the action) for current time _t
 	for(int action = 0; action < _stateHistory[_t].size(); action++){
-	
 		//get the velocity/heading state-specific values
 		switch(action){
 			case ACTION_UP:
@@ -385,16 +422,30 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 		//set the distance to nearest object state attribute per the heading given by each ACTION
 		_stateHistory[_t][action][SA_COLLISION_PROXIMITY] = _nearestObjectOnHeading(xHeading, yHeading, world, missiles);
 
-		//set the cossim value for each action net
+		//set the goal-cossim value for each action net
 		//IMPORTANT: If agent is on the goal, zero vector is passed to cossim, which is undefined. In this case,
 		//clamp cosine to 1.0 (positive/good) for learning consistency with the goal reward.
-		x_prime = world->GOAL_X - (agent.x + xHeading);
-		y_prime = world->GOAL_Y - (agent.y + yHeading);
-		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is on the goal
+		x_prime = world->GOAL_X - agent.x;
+		y_prime = world->GOAL_Y - agent.y;
+		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is directly on the goal
 			_stateHistory[_t][action][SA_GOAL_COSINE] = 1.0;
 		}
 		else{
 			_stateHistory[_t][action][SA_GOAL_COSINE] = _cosSim(x_prime, y_prime, xHeading, yHeading);
+		}
+
+		//determine if agent is headed in a direction where it has already been, in the last k steps
+		//TODO: try both EMA and centroid/avg
+		//x_prime = _locationEma.first - agent.x;
+		//y_prime = _locationEma.second - agent.y;
+		x_prime = _locationAvg.first - agent.x;
+		y_prime = _locationAvg.second - agent.y;
+		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is on the goal
+			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = 1.0;
+		}
+		else{
+			//measures cos-sim between the heading vector and the vector pointing in the direction of some estimated of the previous location
+			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = _cosSim(x_prime, y_prime, xHeading, yHeading);
 		}
 	}
 
@@ -598,11 +649,12 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	double REPETITION_COST = 0.0;
 	double GOAL_REWARD = 5.0;
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
-	double coef_GoalDist, coef_Cosine, coef_CollisionProximity;
+	double coef_GoalDist, coef_Cosine, coef_CollisionProximity, coef_Visited_Cosine;
 	//coef_GoalDist = -10.0 / world->MaxDistanceToGoal;
 	//coef_Cosine = 5.0;
 	//coef_CollisionProximity = ; //not defined; for the hardcoded params, see below; the negation of max distance worked great
-	
+
+	coef_Visited_Cosine = 0.5; // the coefficient for the similarity of the agent's current location versus its where it has visited
 	coef_Cosine = 1;
 	coef_CollisionProximity = 1;
 	coef_GoalDist = 1;
@@ -626,9 +678,8 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 		reward += (coef_GoalDist * _stateHistory[_t][(int)CurrentAction][SA_GOAL_DIST]);
 	}
 
-	if(world->GetCell(agent.x,agent.y).isTraversed){
-		reward += REPETITION_COST;
-	}
+	//punish for revisiting locations (cossim is negated, since we desire dissimilarity)
+	reward += (coef_Visited_Cosine * -_stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE]);
 
 	//add in a punishment for distance to nearest obstacle on heading (experimental; NOTE this requires state vector collision proximity attribute has been set)
 	//reward += (-MAX_COLLISION_PROXIMITY_RANGE + _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
@@ -719,37 +770,36 @@ double Q2Agent::_getCurrentRewardValue_Manual(const World* world, const vector<M
 //just normalizes the input vectors before calculating their cosine similarity
 double Q2Agent::_normalizedCosSim(double x1, double y1, double x2, double y2)
 {
-	double normal1 = sqrt(x1*x1 + y1*y1);
-	double normal2 = sqrt(x2*x2 + y2*y2);
+	double norm1 = sqrt(x1*x1 + y1*y1);
+	double norm2 = sqrt(x2*x2 + y2*y2);
 
-	if(normal1 == 0 || normal2 == 0){
+	if(norm1 == 0 || norm2 == 0){
 		return 0.0;
 	}
 
-	return _cosSim(x1/normal1, y1/normal1, x2/normal2, y2/normal2);
+	return _cosSim(x1/norm1, y1/norm1, x2/norm2, y2/norm2);
 }
 
 //cosine similarity for 2d vectors; range neatly fits between -1 and 1.0
 double Q2Agent::_cosSim(double x1, double y1, double x2, double y2)
 {
-	double cossim;
-	double dot = x1*x2 + y1*y2;
-	double ss1 = x1*x1 + y1*y1;
-	double ss2 = x2*x2 + y2*y2;
-
+	double sim;
+	double dp = x1*x2 + y1*y2;
+	double denom = sqrt(x1*x1 + y1*y1) * sqrt(x2*x2 + y2*y2);
+	
 	//cout << "args: " << x1 << " " << y1 << " " << x2 << " " << y2 << endl;
 
 	//TODO: This is undefined. What should be returned if a zero-vector is passed? Are there other entry points for the result in the conditional?
 	//avert div-zero if either sum-of-squares is zero.
-	if(ss1 == 0.0 || ss2 == 0.0 || dot == 0.0){
-		cossim = 0.0;
+	if(denom == 0.0 || dp == 0.0){
+		sim = 0.0;
 	}
 	else{
-		cossim = dot / (sqrt(ss1) * sqrt(ss2));
+		sim = dp / denom;
 	}
 	//cout << "cossim: " << cossim << endl;
 
-	return cossim;
+	return sim;
 }
 
 /*
@@ -829,6 +879,13 @@ void Q2Agent::ResetEpoch(double terminalReward)
 	EpochActionCount = 0;
 	EpochCollisionCount = 0;
 
+	//reset location history
+	_locationAvg.first = _locationAvg.second = 0.0;
+	_locationAvg.first = _locationEma.second = 0.0;
+	for(int i = 0; i < _recentLocations.size(); i++){
+		_recentLocations[i].first = _recentLocations[i].second = 0.0;
+	}
+	
 	_storeTerminalState(_getCurrentState((Action)CurrentAction),terminalReward);
 }
 
@@ -1514,10 +1571,10 @@ const char* Q2Agent::GetActionStr(int i)
 void Q2Agent::PrintState()
 {
 	const vector<double>& s = _getCurrentState(CurrentAction);
-	cout << _totalEpisodes << " Epoch " << _epochCount << " Episode " <<  _episodeCount << " Agent (" << agent.x << "x," << agent.y << "y) " << " <xVel yVel cos obstDist goalDist> ";
-	//cout << s[SA_XPOS] << " " << s[SA_YPOS] << " " << s[SA_XVELOCITY] << " ";
-	cout << agent.xVelocity << " " << agent.yVelocity << " " << s[SA_GOAL_COSINE] << " "  << s[SA_COLLISION_PROXIMITY] << " " << s[SA_GOAL_DIST] << endl;
-	cout << " Last Epoch reward: " << _lastEpochReward << endl;
+	cout << _totalEpisodes << " Epoch " << _epochCount << " Episode " <<  _episodeCount << " Agent (" << agent.x << "x," << agent.y << "y) " << " <xVel yVel cosGoal cosVisited obstDist goalDist>:" << endl;
+	cout << agent.xVelocity << " " << agent.yVelocity << " " << s[SA_GOAL_COSINE] << " " << s[SA_RECENT_LOCATION_COSINE] << " "  << s[SA_COLLISION_PROXIMITY] << " " << s[SA_GOAL_DIST] << endl;
+	cout << "Recent Loc-avg: " << _locationAvg.first << "," << _locationAvg.second << "    Loc-ema: " << _locationEma.first << "," << _locationEma.second << endl;
+ 	cout << " Last Epoch reward: " << _lastEpochReward << endl;
 	cout << "Action (just executed): [" << CurrentAction << "] " << GetActionStr(CurrentAction) << endl;
 	cout << "Outputs:" << endl;
 	for(int i = 0; i < _currentActionValues.size(); i++){
@@ -1532,6 +1589,3 @@ void Q2Agent::PrintState()
 	cout << "Last epoch performance:  collision rate: " << ((double)((int)(_lastEpochCollisionRate * 1000)) / 100) << "%  #actions: " << _lastEpochActionCount;
 	cout << endl;
 }
-
-
-

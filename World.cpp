@@ -338,4 +338,5 @@ void World::Draw(vector<Missile>& missiles, Agent& agent)
 	//cout << "\033[2J" << endl; //cls; also try \027??
 	cout << "\033[2J\033[1;1H" << endl; //clear the terminal and return cursor to top-left
 	cout << _worldString << endl;
+	cout << "GOAL X/Y: " << GOAL_X << " " << GOAL_Y << endl;
 }

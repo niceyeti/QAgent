@@ -1,4 +1,2 @@
-#!/bin/bash
-echo Compiling Q2Agent from q2test.cpp to q2test.exe with optimizations ...
+echo Compiling Q2Agent from q2test.cpp to q2test.exe with optimizations
 g++ ../ANN/Neuron.cpp ../ANN/MultilayerNetwork.cpp World.cpp Q2Agent.cpp q2test.cpp -O3 -o q2test.exe -std=c++11
-

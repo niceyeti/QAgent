@@ -13,6 +13,10 @@
 #include <cstdio>
 
 #define _USE_MATH_DEFINES
+#ifndef M_PI
+	#define M_PI 3.141592653589793238462643383279
+#endif
+
 
 
 /*
@@ -37,10 +41,10 @@ using namespace std;
 //enum Action{ACTION_UP,ACTION_DOWN,ACTION_LEFT,ACTION_RIGHT,ACTION_SHOOT,ACTION_IDLE};
 enum Action{ACTION_UP, ACTION_DOWN, ACTION_LEFT, ACTION_RIGHT};
 //The agent's state-dimension, and the number of inputs to each q-net
-#define STATE_DIMENSION 3 //  velocity x-component, velocity y-component, x position, y position, etc in spec
+#define STATE_DIMENSION 4 //  velocity x-component, velocity y-component, x position, y position, etc in spec
 //enum StateAttribute{SA_XPOS, SA_YPOS, SA_XVELOCITY, SA_YVELOCITY, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
 //enum StateAttribute{SA_XVELOCITY, SA_YVELOCITY, SA_GOAL_COSINE, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
-enum StateAttribute{SA_GOAL_COSINE, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
+enum StateAttribute{SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
 //!!!!! WARNING!!!! Change any of the above, and verify the entire group. Eg, don't add a state attribute and not STATE_DIMENSION too!!!!
 
 #define BATCH_SIZE 200

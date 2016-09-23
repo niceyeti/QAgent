@@ -22,7 +22,7 @@ int main(int argc, char** argv, char** env)
 
 		//Looping the Update() function: this heuristic works well in practice. Why?
 		//Also that it is sort of invalid, since Update() assumes CurrentAction was the previously asserted action, which is no longer true after the first call.
-		for(int i = 0; i < 10; i++){
+		for(int i = 0; i < 2; i++){
 			q2Agent.Update(&world,missiles);
 		}
 

@@ -8,6 +8,8 @@
 #include "sys/types.h"
 #include "sys/wait.h"
 
+#define NUM_MEMORIZED_LOCATIONS 10
+
 
 class World;
 
@@ -53,7 +55,14 @@ class Q2Agent{
 		fstream _outputFile;
 		fstream _prototypeFile; //for storing state vectors reresenting terminal states (goal-reached, agent crashed, etc)
 		vector<vector<vector<double> > > _stateHistory; //likely only two states for now: t and t+1
-		//in this implementation, the agent has only a single q network		
+		//storage for the recent locations; note this gives agent access to global knowledge, but the assumption is that it is limited to its previous, relative n locations.
+		//the agent thus has access to exponentially decreasing approximations of its recent locations, using an EMA of previous k locations
+		vector<pair<double, double> > _recentLocations;
+		int _locationRingIndex;
+		//These are how the agent approximates its recent, approximate location; it remains to be seen which is better, something centroidish, or exponentially weighted, etc.
+		pair<double, double> _locationEma;
+		pair<double, double> _locationAvg;
+		//in this implementation, the agent has only a single q network
 		MultilayerNetwork _qNet;
 		double _experiencedQValue;
 		//short-term memory for the agent
@@ -72,7 +81,8 @@ class Q2Agent{
 		double _getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Manual(const World* world, const vector<Missile>& missiles);
 		void _updateCurrentState(const World* world, const vector<Missile>& missiles);
-
+		void _updateLocationMemory();
+		
 		//experimental logging
 		void _storeTerminalState(const vector<double>& state, double terminalValue);
 		void _recordExample(const vector<double>& state, double qTarget, double qEstimate, Action action);
