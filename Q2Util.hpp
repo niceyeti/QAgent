@@ -52,7 +52,9 @@ enum StateAttribute{SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROX
 //these are required to normalize the state vector, such that the neural net inputs are range-constrained
 //MAX_COSINE isn't needed, since it is inherently normalized; and MAX_GOAL_DIST is dependent on the world
 #define MAX_VELOCITY 1.0
-#define MAX_COLLISION_PROXIMITY_RANGE 10.0
+//if this is too large, the agent can become too conservative, not finding narrow passages between/around objects,
+//in short, smaller sensitivity gives greater precision in the agent's ability to avoid objects
+#define MAX_COLLISION_PROXIMITY_RANGE 5.0
 
 typedef struct missile{
 	double acceleration;
