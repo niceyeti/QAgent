@@ -652,10 +652,10 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
 	double coef_GoalDist, coef_Cosine, coef_CollisionProximity, coef_Visited_Cosine;
 
-	coef_Visited_Cosine = 0.5; // the coefficient for the similarity of the agent's current location versus its where it has visited
-	coef_Cosine = 1;
-	coef_CollisionProximity = 1;
-	coef_GoalDist = 1;
+	coef_Visited_Cosine = 1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
+	coef_Cosine = 1.0;
+	coef_CollisionProximity = 1.0;
+	coef_GoalDist = 1.0;
 	//normalize the values to help prevent divergence
 	//coef_Cosine /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
 	//coef_CollisionProximity /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
@@ -672,7 +672,6 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 		//reward += GOAL_REWARD;
 	}
 	else{
-		//goal distance scaled by 10.0/max-distance provides value of distance cost; this gives a cost in range [0,-10]
 		reward += (coef_GoalDist * _stateHistory[_t][(int)CurrentAction][SA_GOAL_DIST]);
 	}
 
@@ -1053,11 +1052,12 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 			optimalAction = (Action)action;
 		}
 	}
-
 	
 	//get the target q factor from the experienced reward given the last action
 	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
-	qTarget = _getCurrentRewardValue_Learnt(world, missiles) + _gamma * maxQ;
+	double reward = _getCurrentRewardValue_Learnt(world, missiles);
+	cout << "reward: " << reward << endl;
+	qTarget = reward + _gamma * maxQ;
 	cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;

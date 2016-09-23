@@ -71,7 +71,7 @@ void World::ResizeWorld(int x, int y)
 	}
 }
 
-void World::InitializeWorld(vector<Missile>& missiles, Agent& agent)
+void World::InitializeWorld(vector<Missile>& missiles, Agent& agent, int numObstacles)
 {
 	int i, j, x, y;
 
@@ -84,7 +84,7 @@ void World::InitializeWorld(vector<Missile>& missiles, Agent& agent)
 	}
 
 	//place some random obstacles
-	for(i = 0; i < 30; i++){
+	for(i = 0; i < numObstacles; i++){
 		//get a random orientation, horizontal or vertical
 		if((rand() % 2) == 0){ //place a vertical obstacle
 			x = rand() % _world[0].size();

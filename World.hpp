@@ -34,7 +34,7 @@ class World{
 		double MaxDistanceToGoal;
 		void ResizeWorld(int x, int y);
 		//void PrintState(vector<Missile>& missiles, DiscreteQ2Agent& qagent);
-		void InitializeWorld(vector<Missile>& missiles, Agent& agent);
+		void InitializeWorld(vector<Missile>& missiles, Agent& agent, int numObstacles);
 		void InitRandomMissiles(vector<Missile>& missiles, int numMissiles);
 		void Update(vector<Missile>& missiles, Q2Agent* agent, double timeStep);
 		bool IsValidPosition(int x, int y) const;

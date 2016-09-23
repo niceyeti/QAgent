@@ -10,7 +10,7 @@ int main(int argc, char** argv, char** env)
 
 	srand(time(NULL));
 	usleep(rand() % 50000);
-	world.InitializeWorld(missiles, q2Agent.agent);
+	world.InitializeWorld(missiles, q2Agent.agent, 45);
 
 	while(true){
 		//tell the agent the current world state, letting it take some action
@@ -22,15 +22,15 @@ int main(int argc, char** argv, char** env)
 
 		//Looping the Update() function: this heuristic works well in practice. Why?
 		//Also that it is sort of invalid, since Update() assumes CurrentAction was the previously asserted action, which is no longer true after the first call.
-		for(int i = 0; i < 2; i++){
+		for(int i = 0; i < 1; i++){
 			q2Agent.Update(&world,missiles);
 		}
 
 		//Update and draw the world; this is just updating a model and displaying a view
 		world.Update(missiles, &q2Agent, 1.0);
 		world.Draw(missiles, q2Agent.agent);
-		q2Agent.PrintState();
-		//usleep(50000);
+		//q2Agent.PrintState();
+		usleep(10000);
 	}
 
 	return 0;
