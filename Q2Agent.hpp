@@ -10,7 +10,7 @@
 
 //smaller values (3-5) have worked the best; larger values produce oscillations. The effect of a smaller number of memorized locations
 //is to let only the most recent locations push the agent, hence pushing the opposite in a more orthogonal direct wrt the visited region's radius
-#define NUM_MEMORIZED_LOCATIONS 4
+#define NUM_MEMORIZED_LOCATIONS 10
 
 
 class World;
@@ -82,6 +82,7 @@ class Q2Agent{
 		double _nearestObjectOnHeading(double headingX, double headingY, const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Manual(const World* world, const vector<Missile>& missiles);
+		double _getCurrentRewardValue_Terminal(const World* world, const vector<Missile>& missiles);
 		void _updateCurrentState(const World* world, const vector<Missile>& missiles);
 		void _updateLocationMemory();
 		

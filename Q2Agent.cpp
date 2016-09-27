@@ -437,10 +437,10 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 
 		//determine if agent is headed in a direction where it has already been, in the last k steps
 		//TODO: try both EMA and centroid/avg
-		//x_prime = _locationEma.first - agent.x;
-		//y_prime = _locationEma.second - agent.y;
-		x_prime = _locationAvg.first - agent.x;
-		y_prime = _locationAvg.second - agent.y;
+		x_prime = _locationEma.first - agent.x;
+		y_prime = _locationEma.second - agent.y;
+		//x_prime = _locationAvg.first - agent.x;
+		//y_prime = _locationAvg.second - agent.y;
 		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is on the goal
 			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = 1.0;
 		}
@@ -634,6 +634,36 @@ bool Q2Agent::_isWallCollision(const World* world)
 		return true;
 
 	return false;
+}
+
+/*
+This is the classical, discrete q-learning reward function, for which the agent typically only
+receives a reward (positive or negative) when it reaches some sort of terminal state. This is very likely
+to diverge for the approximate q-learning model, but needed to be experimented with anyway. The reason
+a discrete/terminal reward function works in discrete q-learning is because the values propagate recursively
+to other states, but this is not (immediately anyhow) the case with approximate q-learning, for which the 
+neural net is going to experience "sudden", oscillating reward values.
+
+Its still worth testing this, since there may be simple mechanisms and strategies of overcoming these effects.
+
+Results: This has been shown to work, but the agent's behavior is imprecise around the goal. It approximates the
+goal location well, but spends a lot of time circling. It's learning must also be constrained: I got this to work
+by only updating q-values when the reward was non-zero (hence, the agent was only updated when it experienced what
+might be interpreted as 'significant' events, collision, goal-reached, etc). I used eta = 0.05, gamma = 0.9,
+network with 12 hidden units, otherwise mostly the same as the normal architecture. 
+*/
+double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector<Missile>& missiles)
+{
+	double reward = 0.0;
+
+	if(world->GetCell(agent.x, agent.y).isGoal){
+		reward = 10.0;
+	}
+	else if(world->GetCell(agent.x, agent.y).isObstacle){
+		reward = -1.0;
+	}
+
+	return reward;
 }
 
 /*
@@ -1055,22 +1085,25 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	
 	//get the target q factor from the experienced reward given the last action
 	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
-	double reward = _getCurrentRewardValue_Learnt(world, missiles);
+	//double reward = _getCurrentRewardValue_Learnt(world, missiles);
+	double reward = _getCurrentRewardValue_Terminal(world, missiles);
 	cout << "reward: " << reward << endl;
 	qTarget = reward + _gamma * maxQ;
 	cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
-	//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
-	//backpropagate the error and update the network weights for the last action (only)
-	const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
-	_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
-	prevEstimate = _qNet.GetOutputs()[0].Output;
-	cout << "prev estimate: " << prevEstimate << endl;
-	_qNet.BackpropagateError(previousState, qTarget);
-	_qNet.UpdateWeights(previousState, qTarget);
-	//cout << "44" << endl;
+	if(reward != 0.0){
+		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+		//backpropagate the error and update the network weights for the last action (only)
+		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+		_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+		prevEstimate = _qNet.GetOutputs()[0].Output;
+		cout << "prev estimate: " << prevEstimate << endl;
+		_qNet.BackpropagateError(previousState, qTarget);
+		_qNet.UpdateWeights(previousState, qTarget);
+		//cout << "44" << endl;
+	}
 
 	if(_episodeCount > 100){
 		//record this example; this is useful for both replay-based learning and for data analysis

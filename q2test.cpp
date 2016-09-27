@@ -3,6 +3,7 @@
 
 int main(int argc, char** argv, char** env)
 {
+	int t = 0;
 	string dummy;
 	World world(120, 35);
 	Q2Agent q2Agent(5,5);
@@ -28,9 +29,13 @@ int main(int argc, char** argv, char** env)
 
 		//Update and draw the world; this is just updating a model and displaying a view
 		world.Update(missiles, &q2Agent, 1.0);
-		world.Draw(missiles, q2Agent.agent);
-		//q2Agent.PrintState();
-		usleep(10000);
+		//only draw and delay once we want to see the agent's behavior
+		if(t > 100000){
+			world.Draw(missiles, q2Agent.agent);
+			//q2Agent.PrintState();
+			usleep(5000);
+		}
+		t++;
 	}
 
 	return 0;
