@@ -122,6 +122,7 @@ class Q2Agent{
 		//void MinibatchUpdate(const World* world, const vector<Missile>& missiles);
 		//void OfflineUpdate(const World* world, const vector<Missile>& missiles);
 		//void EpochalUpdate(const World* world, const vector<Missile>& missiles);
+		void ClassicalUpdate(const World* world, const vector<Missile>& missiles);
 		void Update(const World* world, const vector<Missile>& missiles);
 		Action CurrentAction;
 };

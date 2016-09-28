@@ -1085,6 +1085,93 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	
 	//get the target q factor from the experienced reward given the last action
 	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
+	double reward = _getCurrentRewardValue_Learnt(world, missiles);
+	cout << "reward: " << reward << endl;
+	qTarget = reward + _gamma * maxQ;
+	cout << "QTARGET: " << qTarget << endl;
+	_epochReward += qTarget;
+	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
+
+	//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+	//backpropagate the error and update the network weights for the last action (only)
+	const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+	_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+	prevEstimate = _qNet.GetOutputs()[0].Output;
+	cout << "prev estimate: " << prevEstimate << endl;
+	_qNet.BackpropagateError(previousState, qTarget);
+	_qNet.UpdateWeights(previousState, qTarget);
+	//cout << "44" << endl;
+
+	if(_episodeCount > 100){
+		//record this example; this is useful for both replay-based learning and for data analysis
+		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+	}
+
+	//take the action with the highest q-value
+	//LastAction = CurrentAction;
+	CurrentAction = optimalAction;
+
+	//randomize the action n% of the time
+	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
+	if((rand() % 5) == 4){
+		if(rand() % 2 == 0)
+			CurrentAction = _getStochasticOptimalAction();
+		else
+			CurrentAction = (Action)(rand() % NUM_ACTIONS);
+	}
+
+	//map the action into outputs
+	_takeAction(CurrentAction);
+
+	//some metalogic stuff: random restarts and force agent to move if in same place too long
+	//TODO: this member represents bad coupling
+	agent.sufferedCollision = false;
+	_episodeCount++;
+	_totalEpisodes++;
+
+	//testing: print the neural net weights
+	//if(_episodeCount % 100 == 1){
+		//_qNet.PrintWeights();
+	//}
+}
+
+/*
+This implements the vanilla/classical q-value update scheme, for which the agent only receives a reward (-1, +10, etc)
+at terminal states (collision, falls off cliff, reaches goal, etc). Its tricky getting this discretized scheme working
+in the real-valued q-world, but it randomly started working when I imposed the constraint to only update neural network
+values when the reward function returns some non-zero number, aka when it reaches a terminal state. Hence the bias leading
+to divergence, since the agent spends a lot of time running into things (negative reward) before it ever finds the goal.
+
+This works, albeit intermittently. The intermittance so far seems to be a product of whether or not the agent
+ever find the goal. If it doesn't, it continually experiences negative rewards, often pushing the network weights
+to negative infinity (this could likely be prevented with network countermeasures like weight decay).
+
+
+*/
+void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missiles)
+{
+	int action;
+	double maxQ, qTarget, prevEstimate;
+	Action optimalAction = ACTION_UP;
+
+	//Update agent's current state and state history for all possible actions
+	_updateCurrentState(world, missiles);
+
+	//classify the new current-state across all action-nets 
+	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
+		//classify the state we just entered, given the previous action
+		_qNet.Classify(_getCurrentState((Action)action));
+		cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
+		_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
+		//track the max action available in current state
+		if(_qNet.GetOutputs()[0].Output > maxQ){
+			maxQ = _qNet.GetOutputs()[0].Output;
+			optimalAction = (Action)action;
+		}
+	}
+	
+	//get the target q factor from the experienced reward given the last action
+	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
 	//double reward = _getCurrentRewardValue_Learnt(world, missiles);
 	double reward = _getCurrentRewardValue_Terminal(world, missiles);
 	cout << "reward: " << reward << endl;
@@ -1109,7 +1196,6 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 		//record this example; this is useful for both replay-based learning and for data analysis
 		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 	}
-	
 
 	//take the action with the highest q-value
 	//LastAction = CurrentAction;
