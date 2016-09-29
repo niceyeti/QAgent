@@ -172,7 +172,7 @@ void Q2Agent::_updateCurrentState(const World* world, const vector<Missile>& mis
 		_normalizeStateVector(world, _stateHistory[_t][action]);
 	}
 
-	PrintCurrentStateEstimates();
+	//PrintCurrentStateEstimates();
 }
 
 //Each action has a state estimate (the state that would be a consequence of taking the action). This prints these.
@@ -656,9 +656,9 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 	double reward = 0.0;
 
 	if(world->GetCell(agent.x, agent.y).isGoal){
-		reward = 10.0;
+		reward = 1.0;
 	}
-	else if(world->GetCell(agent.x, agent.y).isObstacle){
+	else if(agent.sufferedCollision){
 		reward = -1.0;
 	}
 
@@ -1167,7 +1167,13 @@ This works, albeit intermittently. The intermittance so far seems to be a produc
 ever find the goal. If it doesn't, it continually experiences negative rewards, often pushing the network weights
 to negative infinity (this could likely be prevented with network countermeasures like weight decay).
 
+Good parameters (these found a good policy only about 1:6 times)
+	eta=0.1
+	momentum=0.2
+	terminal rewards: collision=-1.0, goal=1.0
 
+Even when the agent finds a good policy (for which a Pocket strategy could be useful), it can unlearn
+that policy and go chaotic again.
 */
 void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missiles)
 {
@@ -1178,11 +1184,13 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//Update agent's current state and state history for all possible actions
 	_updateCurrentState(world, missiles);
 
+	_qNet.SetEta(0.1);
+
 	//classify the new current-state across all action-nets 
 	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
 		//classify the state we just entered, given the previous action
 		_qNet.Classify(_getCurrentState((Action)action));
-		cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
+		//cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
 		_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
 		//track the max action available in current state
 		if(_qNet.GetOutputs()[0].Output > maxQ){
@@ -1195,9 +1203,9 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
 	//double reward = _getCurrentRewardValue_Learnt(world, missiles);
 	double reward = _getCurrentRewardValue_Terminal(world, missiles);
-	cout << "reward: " << reward << endl;
+	//cout << "reward: " << reward << endl;
 	qTarget = reward + _gamma * maxQ;
-	cout << "QTARGET: " << qTarget << endl;
+	//cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
@@ -1207,7 +1215,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
 		_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
 		prevEstimate = _qNet.GetOutputs()[0].Output;
-		cout << "prev estimate: " << prevEstimate << endl;
+		cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
 		_qNet.BackpropagateError(previousState, qTarget);
 		_qNet.UpdateWeights(previousState, qTarget);
 		//cout << "44" << endl;
@@ -1225,10 +1233,13 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
 	if((rand() % 5) == 4){
+		/*
 		if(rand() % 2 == 0)
 			CurrentAction = _getStochasticOptimalAction();
 		else
 			CurrentAction = (Action)(rand() % NUM_ACTIONS);
+		*/
+		CurrentAction = (Action)(rand() % NUM_ACTIONS);
 	}
 
 	//map the action into outputs
@@ -1239,7 +1250,6 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	agent.sufferedCollision = false;
 	_episodeCount++;
 	_totalEpisodes++;
-
 
 	//testing: print the neural net weights
 	//if(_episodeCount % 100 == 1){

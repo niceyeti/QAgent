@@ -55,7 +55,7 @@ enum StateAttribute{SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROX
 #define MAX_VELOCITY 1.0
 //if this is too large, the agent can become too conservative, not finding narrow passages between/around objects,
 //in short, smaller sensitivity gives greater precision in the agent's ability to avoid objects
-#define MAX_COLLISION_PROXIMITY_RANGE 6.0
+#define MAX_COLLISION_PROXIMITY_RANGE 4.0
 
 typedef struct missile{
 	double acceleration;
