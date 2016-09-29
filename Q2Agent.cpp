@@ -97,13 +97,13 @@ Q2Agent::Q2Agent(int initX, int initY)
 		cout << "ERROR could not open prototype.csv file" << endl;
 	}
 
+	_rewardParamsFile.open("rewardParams.csv", ios::out);
+	if(!_rewardParamsFile.is_open()){
+		cout << "ERROR could not open rewardParams.csv file" << endl;
+	}
+
 	//write the headers. not using csv for now, oh well...
 	//_outputFile << "<comma-delimited state values>,qTarget,qEstimate,ActionString" << endl;
-
-
-	//set up the regularization parameters
-
-
 }
 
 Q2Agent::~Q2Agent()
@@ -657,9 +657,11 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 
 	if(world->GetCell(agent.x, agent.y).isGoal){
 		reward = 1.0;
+		StoreTerminalState(reward);
 	}
 	else if(agent.sufferedCollision){
 		reward = -1.0;
+		StoreTerminalState(reward);
 	}
 
 	return reward;
@@ -939,6 +941,15 @@ void Q2Agent::StoreTerminalState(double terminalReward)
 }
 
 /*
+Can be used to store the snapshot of the current reward parameters, and some measure of the reward experienced
+by those parameters.
+*/
+void Q2Agent::StoreRewardParams(const vector<double>& rewardParams, double reward)
+{
+	_storeLabeledVector(rewardParams, reward, _rewardParamsFile);
+}
+
+/*
 For testing/experimentation: log the terminal state vectors.
 
 The motivation is to use the terminal states as prototypes of +/-1
@@ -955,10 +966,16 @@ subject to experiment whether or not that will help at all.
 */
 void Q2Agent::_storeTerminalState(const vector<double>& state, double terminalValue)
 {
+	_storeLabeledVector(state, terminalValue, _prototypeFile);
+}
+
+//util for storing an example in csv, such as for offline training
+void Q2Agent::_storeLabeledVector(const vector<double>& state, double terminalValue, fstream& outputFile)
+{
 	for(int i = 0; i < state.size(); i++){
-		_prototypeFile << state[i] << ",";
+		outputFile << state[i] << ",";
 	}
-	_prototypeFile << terminalValue << endl;
+	outputFile << terminalValue << endl;
 }
 
 /*
@@ -1164,8 +1181,13 @@ values when the reward function returns some non-zero number, aka when it reache
 to divergence, since the agent spends a lot of time running into things (negative reward) before it ever finds the goal.
 
 This works, albeit intermittently. The intermittance so far seems to be a product of whether or not the agent
-ever find the goal. If it doesn't, it continually experiences negative rewards, often pushing the network weights
+ever finds the goal. If it doesn't, it continually experiences negative rewards, often pushing the network weights
 to negative infinity (this could likely be prevented with network countermeasures like weight decay).
+Likewise, if it goes without finding the goal for a while, running into things, it seems to unlearn its goal-finding behavior.
+A version of Pocket could be used, such as storing the best neural net weights (best policy) for the maximum reward
+for some measure of cumulative reward.
+
+Either way, lots of heuristics could help this perform better. But toying with local hacks isn't all that interesting.
 
 Good parameters (these found a good policy only about 1:6 times)
 	eta=0.1
@@ -1184,7 +1206,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//Update agent's current state and state history for all possible actions
 	_updateCurrentState(world, missiles);
 
-	_qNet.SetEta(0.1);
+	//_qNet.SetEta(0.1);
 
 	//classify the new current-state across all action-nets 
 	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){

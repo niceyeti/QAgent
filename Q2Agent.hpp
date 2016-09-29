@@ -57,6 +57,7 @@ class Q2Agent{
 		vector<double> _rewardHistory;
 		string _historyFilePath;
 		fstream _outputFile;
+		fstream _rewardParamsFile;
 		fstream _prototypeFile; //for storing state vectors reresenting terminal states (goal-reached, agent crashed, etc)
 		vector<vector<vector<double> > > _stateHistory; //likely only two states for now: t and t+1
 		//storage for the recent locations; note this gives agent access to global knowledge, but the assumption is that it is limited to its previous, relative n locations.
@@ -89,7 +90,9 @@ class Q2Agent{
 		void _updateLocationMemory();
 		
 		//experimental logging
+		void _storeRewardParams(const vector<double>& state, double totalReward);
 		void _storeTerminalState(const vector<double>& state, double terminalValue);
+		void _storeLabeledVector(const vector<double>& state, double terminalValue, fstream& outputFile);
 		void _recordExample(const vector<double>& state, double qTarget, double qEstimate, Action action);
 
 		Action _getStochasticOptimalAction();
@@ -117,6 +120,7 @@ class Q2Agent{
 		double EpochCollisionCount;
 		double GoalResetThreshold;
 		void StoreTerminalState(double terminalValue);
+		void StoreRewardParams(const vector<double>& rewardParams, double reward);
 		void ResetEpoch(double terminalValue);
 		void PrintCurrentStateEstimates();
 		const char* GetActionStr(int i);

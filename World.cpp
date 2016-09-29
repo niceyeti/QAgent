@@ -168,7 +168,7 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 		if(!IsValidPosition(newX,newY) || GetCell(newX,newY).isObstacle){
 			qagent->agent.sufferedCollision = true;
 			qagent->EpochCollisionCount++;
-			qagent->StoreTerminalState(-1.0); //ugly hack: store terminal state w/out resetting the agent
+			//qagent->StoreTerminalState(-1.0); //ugly hack: store terminal state w/out resetting the agent
 			//_restartAgent(qagent,-1.0);
 		}
 		//else{
