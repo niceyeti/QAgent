@@ -65,6 +65,8 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_qNet.SetEta(_eta);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
 	_qNet.SetMomentum(0.2);
+	//set the regularization term
+	_qNet.SetWeightDecay(0.001);
 
 	//init the state history; only t and t+1 for now
 	_stateHistory.resize(2);
@@ -98,12 +100,9 @@ Q2Agent::Q2Agent(int initX, int initY)
 	//write the headers. not using csv for now, oh well...
 	//_outputFile << "<comma-delimited state values>,qTarget,qEstimate,ActionString" << endl;
 
-	/*
+
 	//set up the regularization parameters
-	for(int i = 0; i < _qNets.size(); i++){	
-		_qNet.SetRegularizerLambda(0.1);
-	}
-	*/
+
 
 }
 
@@ -206,7 +205,7 @@ void Q2Agent::_normalizeStateVector(const World* world, vector<double>& state)
 	state[SA_COLLISION_PROXIMITY] = 0.0 - (2.0 * ((double)MAX_COLLISION_PROXIMITY_RANGE - state[SA_COLLISION_PROXIMITY])) / (double)MAX_COLLISION_PROXIMITY_RANGE;
 	//cout << "AFTER: " << state[SA_COLLISION_PROXIMITY] << endl;
 	//goal distance is scaled to range [-1.0,1.0] with -1.0 being worst (greatest distance) and 1.0 being the best
-	state[SA_GOAL_DIST] = 0.0 - (2.0 * state[SA_GOAL_DIST]) / world->MaxDistanceToGoal;
+	//state[SA_GOAL_DIST] = 0.0 - (2.0 * state[SA_GOAL_DIST]) / world->MaxDistanceToGoal;
 }
 
 /*
@@ -221,7 +220,7 @@ void Q2Agent::_zeroMeanStateVector(const World* world, vector<double>& state)
 	//_stateHistory[_t][SA_YVELOCITY] /= MAX_VELOCITY;
 	//some magic algebra here. just normalizes and shifts the distance attribute to lie in [-1.0,1.0]
 	state[SA_COLLISION_PROXIMITY] =	2.0 * state[SA_COLLISION_PROXIMITY] / MAX_COLLISION_PROXIMITY_RANGE - 1.0;
-	state[SA_GOAL_DIST] = 2.0 * state[SA_GOAL_DIST] / world->MaxDistanceToGoal - 1.0;
+	//state[SA_GOAL_DIST] = 2.0 * state[SA_GOAL_DIST] / world->MaxDistanceToGoal - 1.0;
 }
 
 /*
@@ -418,7 +417,7 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 		//_stateHistory[_t][action][SA_XVELOCITY] = xHeading;
 		//_stateHistory[_t][action][SA_YVELOCITY] = yHeading;
 		//set distance per the position delta if this action is taken
-		_stateHistory[_t][action][SA_GOAL_DIST] = _dist(world->GOAL_X, world->GOAL_Y, agent.x + xHeading, agent.y + yHeading);
+		//_stateHistory[_t][action][SA_GOAL_DIST] = _dist(world->GOAL_X, world->GOAL_Y, agent.x + xHeading, agent.y + yHeading);
 
 		//set the distance to nearest object state attribute per the heading given by each ACTION
 		_stateHistory[_t][action][SA_COLLISION_PROXIMITY] = _nearestObjectOnHeading(xHeading, yHeading, world, missiles);
@@ -680,12 +679,12 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	//double REPETITION_COST = 0.0;
 	//double GOAL_REWARD = 5.0;
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
-	double coef_GoalDist, coef_Cosine, coef_CollisionProximity, coef_Visited_Cosine;
+	double coef_Goal_Cosine, coef_CollisionProximity, coef_Visited_Cosine;
 
-	coef_Visited_Cosine = 1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
-	coef_Cosine = 1.0;
+	coef_Visited_Cosine = -1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
+	coef_Goal_Cosine = 1.0;
 	coef_CollisionProximity = 1.0;
-	coef_GoalDist = 1.0;
+	//coef_GoalDist = 0.0;
 	//normalize the values to help prevent divergence
 	//coef_Cosine /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
 	//coef_CollisionProximity /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
@@ -697,6 +696,7 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 		//reward += COLLISION_COST;
 	}
 
+	/*
 	if(world->GetCell(agent.x, agent.y).isGoal){
 		cout << "FOUND GOAL!" << endl;
 		//reward += GOAL_REWARD;
@@ -704,16 +704,17 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	else{
 		reward += (coef_GoalDist * _stateHistory[_t][(int)CurrentAction][SA_GOAL_DIST]);
 	}
+	*/
 
 	//punish for revisiting locations (cossim is negated, since we desire dissimilarity)
-	reward += (coef_Visited_Cosine * -_stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE]);
+	reward += (coef_Visited_Cosine * _stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE]);
 
 	//add in a punishment for distance to nearest obstacle on heading (experimental; NOTE this requires state vector collision proximity attribute has been set)
 	//reward += (-MAX_COLLISION_PROXIMITY_RANGE + _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
 	reward += (coef_CollisionProximity * _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
 
 	//update the cosine-based reward
-	reward += (coef_Cosine * _stateHistory[_t][CurrentAction][SA_GOAL_COSINE]);
+	reward += (coef_Goal_Cosine * _stateHistory[_t][CurrentAction][SA_GOAL_COSINE]);
 
 	//cout << "reward: " << reward << endl;
 	return reward;
@@ -1003,7 +1004,9 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 	_epochReward += qTarget;
 
 	//record this example
-	_recordExample(_getPreviousState((Action)CurrentAction), qTarget, _currentActionValues[CurrentAction], CurrentAction);
+	if(_episodeCount > 100){
+		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, _currentActionValues[CurrentAction], CurrentAction);
+	}
 
 	//take the action with the current highest q-value
 	CurrentAction = optimalAction;
@@ -1689,7 +1692,8 @@ void Q2Agent::PrintState()
 {
 	const vector<double>& s = _getCurrentState(CurrentAction);
 	cout << _totalEpisodes << " Epoch " << _epochCount << " Episode " <<  _episodeCount << " Agent (" << agent.x << "x," << agent.y << "y) " << " <xVel yVel cosGoal cosVisited obstDist goalDist>:" << endl;
-	cout << agent.xVelocity << " " << agent.yVelocity << " " << s[SA_GOAL_COSINE] << " " << s[SA_RECENT_LOCATION_COSINE] << " "  << s[SA_COLLISION_PROXIMITY] << " " << s[SA_GOAL_DIST] << endl;
+	cout << agent.xVelocity << " " << agent.yVelocity << " " << s[SA_GOAL_COSINE] << " " << s[SA_RECENT_LOCATION_COSINE] << " "  << s[SA_COLLISION_PROXIMITY] << " " << endl;
+	//cout << agent.xVelocity << " " << agent.yVelocity << " " << s[SA_GOAL_COSINE] << " " << s[SA_RECENT_LOCATION_COSINE] << " "  << s[SA_COLLISION_PROXIMITY] << " " << s[SA_GOAL_DIST] << endl;
 	cout << "Recent Loc-avg: " << _locationAvg.first << "," << _locationAvg.second << "    Loc-ema: " << _locationEma.first << "," << _locationEma.second << endl;
  	cout << " Last Epoch reward: " << _lastEpochReward << endl;
 	cout << "Action (just executed): [" << CurrentAction << "] " << GetActionStr(CurrentAction) << endl;

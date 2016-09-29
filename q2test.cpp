@@ -24,13 +24,17 @@ int main(int argc, char** argv, char** env)
 		//Looping the Update() function: this heuristic works well in practice. Why?
 		//Also that it is sort of invalid, since Update() assumes CurrentAction was the previously asserted action, which is no longer true after the first call.
 		for(int i = 0; i < 1; i++){
-			q2Agent.ClassicalUpdate(&world,missiles);
+			q2Agent.Update(&world,missiles);
 		}
+		
+		//q2Agent.Update(&world,missiles);
+		//q2Agent.LoopedUpdate(&world,missiles);
+		//q2Agent.ClassicalUpdate(&world,missiles);
 
 		//Update and draw the world; this is just updating a model and displaying a view
 		world.Update(missiles, &q2Agent, 1.0);
 		//only draw and delay once we want to see the agent's behavior
-		if(t > 200000){
+		if(t > 1000){
 			world.Draw(missiles, q2Agent.agent);
 			//q2Agent.PrintState();
 			usleep(5000);
