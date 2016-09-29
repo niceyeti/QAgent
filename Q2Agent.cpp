@@ -666,6 +666,23 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 }
 
 /*
+Updates the agent's externally-received reward value. Don't confuse this with the reward coefficient vector,
+or the reward() function, which returns the agent's estimate of the current reward.
+*/
+void Q2Agent::_updateExternalReward(const World* world, const vector<Missile>& missiles)
+{
+	if(world->GetCell(agent.x, agent.y).isGoal){
+		_totalExternalReward += 10;
+		_rewardHistory.push_back(10);
+	}
+	else if(world->GetCell(agent.x, agent.y).isObstacle){
+		_totalExternalReward -= -1;
+		_rewardHistory.push_back(-1);
+	}
+}
+
+
+/*
 Some experimenting with learning the reward function values, which is the real goal of 
 reinforcement learning.
 */
@@ -681,14 +698,12 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
 	double coef_Goal_Cosine, coef_CollisionProximity, coef_Visited_Cosine;
 
+	//coef_Visited_Cosine = -1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
+	//coef_Goal_Cosine = 1.0;
+	//coef_CollisionProximity = 1.0;
 	coef_Visited_Cosine = -1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
 	coef_Goal_Cosine = 1.0;
 	coef_CollisionProximity = 1.0;
-	//coef_GoalDist = 0.0;
-	//normalize the values to help prevent divergence
-	//coef_Cosine /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
-	//coef_CollisionProximity /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
-	//coef_GoalDist /= (coef_Cosine + coef_CollisionProximity + coef_GoalDist);
 
 	//check if last action caused a collision
 	if(agent.sufferedCollision){
@@ -1072,6 +1087,9 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 
 	//Update agent's current state and state history for all possible actions
 	_updateCurrentState(world, missiles);
+
+	//Update external rewards (agent ran into wall, reached goal, etc)
+	_updateExternalReward(world,missiles);
 
 	//classify the new current-state across all action-nets 
 	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){

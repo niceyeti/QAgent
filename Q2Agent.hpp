@@ -53,6 +53,8 @@ class Q2Agent{
 		int _t;
 		double _eta;
 		double _gamma;
+		double _totalExternalReward;
+		vector<double> _rewardHistory;
 		string _historyFilePath;
 		fstream _outputFile;
 		fstream _prototypeFile; //for storing state vectors reresenting terminal states (goal-reached, agent crashed, etc)
@@ -102,6 +104,7 @@ class Q2Agent{
 		const vector<double>& _getPreviousState(Action action);
 		const vector<double>& _getCurrentState(Action action);
 		bool _isWallCollision(const World* world);
+		void _updateExternalReward(const World* world, const vector<Missile>& missiles);
 	public:
 		Q2Agent()=delete;
 		Q2Agent(int initX, int initY);
