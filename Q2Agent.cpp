@@ -674,12 +674,14 @@ or the reward() function, which returns the agent's estimate of the current rewa
 void Q2Agent::_updateExternalReward(const World* world, const vector<Missile>& missiles)
 {
 	if(world->GetCell(agent.x, agent.y).isGoal){
-		_totalExternalReward += 10;
-		_rewardHistory.push_back(10);
+		_totalExternalReward += 1;
+		_rewardHistory.push_back(1);
+		StoreTerminalState(1);
 	}
-	else if(world->GetCell(agent.x, agent.y).isObstacle){
+	else if(agent.sufferedCollision){
 		_totalExternalReward -= -1;
 		_rewardHistory.push_back(-1);
+		StoreTerminalState(-1);
 	}
 }
 
@@ -698,14 +700,16 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	//double REPETITION_COST = 0.0;
 	//double GOAL_REWARD = 5.0;
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
-	double coef_Goal_Cosine, coef_CollisionProximity, coef_Visited_Cosine;
+	double coef_Goal_Cosine, coef_Visited_Cosine, coef_CollisionProximity;
 
+
+	//opt, with linear regression: 0.16115334 -0.08905619  0.83468276
 	//coef_Visited_Cosine = -1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
 	//coef_Goal_Cosine = 1.0;
 	//coef_CollisionProximity = 1.0;
-	coef_Visited_Cosine = -1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
-	coef_Goal_Cosine = 1.0;
-	coef_CollisionProximity = 1.0;
+	coef_Goal_Cosine = 0.5;
+	coef_Visited_Cosine = -0.5; // the coefficient for the similarity of the agent's current location versus its where it has visited
+	coef_CollisionProximity = 0.9;
 
 	//check if last action caused a collision
 	if(agent.sufferedCollision){
@@ -723,15 +727,15 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	}
 	*/
 
+	//update the cosine-based reward
+	reward += (coef_Goal_Cosine * _stateHistory[_t][CurrentAction][SA_GOAL_COSINE]);
+
 	//punish for revisiting locations (cossim is negated, since we desire dissimilarity)
 	reward += (coef_Visited_Cosine * _stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE]);
 
 	//add in a punishment for distance to nearest obstacle on heading (experimental; NOTE this requires state vector collision proximity attribute has been set)
 	//reward += (-MAX_COLLISION_PROXIMITY_RANGE + _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
 	reward += (coef_CollisionProximity * _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
-
-	//update the cosine-based reward
-	reward += (coef_Goal_Cosine * _stateHistory[_t][CurrentAction][SA_GOAL_COSINE]);
 
 	//cout << "reward: " << reward << endl;
 	return reward;
@@ -1112,7 +1116,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
 		//classify the state we just entered, given the previous action
 		_qNet.Classify(_getCurrentState((Action)action));
-		cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
+		//cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
 		_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
 		//track the max action available in current state
 		if(_qNet.GetOutputs()[0].Output > maxQ){
@@ -1124,9 +1128,9 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	//get the target q factor from the experienced reward given the last action
 	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
 	double reward = _getCurrentRewardValue_Learnt(world, missiles);
-	cout << "reward: " << reward << endl;
+	//cout << "reward: " << reward << endl;
 	qTarget = reward + _gamma * maxQ;
-	cout << "QTARGET: " << qTarget << endl;
+	//cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
@@ -1135,7 +1139,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
 	_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
 	prevEstimate = _qNet.GetOutputs()[0].Output;
-	cout << "prev estimate: " << prevEstimate << endl;
+	//cout << "prev estimate: " << prevEstimate << endl;
 	_qNet.BackpropagateError(previousState, qTarget);
 	_qNet.UpdateWeights(previousState, qTarget);
 	//cout << "44" << endl;
