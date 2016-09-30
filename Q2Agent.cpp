@@ -50,7 +50,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.1;
+	_eta = 0.04;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time series index
@@ -663,6 +663,10 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 		reward = -1.0;
 		StoreTerminalState(reward);
 	}
+	
+	if(world->GetCell(agent.x, agent.y).isTraversed){
+		reward -= 0.5
+	}
 
 	return reward;
 }
@@ -1236,20 +1240,19 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
 	if(reward != 0.0){
-		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
-		//backpropagate the error and update the network weights for the last action (only)
-		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
-		_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
-		prevEstimate = _qNet.GetOutputs()[0].Output;
-		cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
-		_qNet.BackpropagateError(previousState, qTarget);
-		_qNet.UpdateWeights(previousState, qTarget);
-		//cout << "44" << endl;
-	}
-
-	if(_episodeCount > 100){
-		//record this example; this is useful for both replay-based learning and for data analysis
-		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+			//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+			//backpropagate the error and update the network weights for the last action (only)
+			const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+			_qNet.Classify(previousState); //the net must be re-clamped to:Class the previous state's signals
+			prevEstimate = _qNet.GetOutputs()[0].Output;
+			cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
+			_qNet.BackpropagateError(previousState, qTarget);
+			_qNet.UpdateWeights(previousState, qTarget);
+			//cout << "44" << endl;
+		if(_episodeCount > 100){
+			//record this example; this is useful for both replay-based learning and for data analysis
+			_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+		}
 	}
 
 	//take the action with the highest q-value
@@ -1258,14 +1261,16 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if((rand() % 5) == 4){
-		/*
-		if(rand() % 2 == 0)
-			CurrentAction = _getStochasticOptimalAction();
-		else
+	if( _totalEpisodes < 100000){
+		if(rand() % 5 == 4){
+			/*
+			if(rand() % 2 == 0)
+				CurrentAction = _getStochasticOptimalAction();
+			else
+				CurrentAction = (Action)(rand() % NUM_ACTIONS);
+			*/
 			CurrentAction = (Action)(rand() % NUM_ACTIONS);
-		*/
-		CurrentAction = (Action)(rand() % NUM_ACTIONS);
+		}
 	}
 
 	//map the action into outputs
