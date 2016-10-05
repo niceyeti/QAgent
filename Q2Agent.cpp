@@ -11,11 +11,14 @@ TODO's for experimentation:
 		online: are there any outside neural nets? rbf nets?
 		offline: regression, polynomial regression, etc
 
-	
-
 */
 
-
+kvector::kvector(const vector<double>& state, double reward, char label)
+{
+	xs = state;
+	r = reward;
+	alpha = label;
+}
 
 Experience::Experience()
 {
@@ -50,7 +53,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.04;
+	_eta = 0.03;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time series index
@@ -85,7 +88,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_locationAvg.first = 0.0;
 	_locationAvg.second = 0.0;
 	
-	//set up the historian
+	//set up the various output files
 	_historyFilePath = "./history.txt";
 	_outputFile.open(_historyFilePath,ios::out);
 	if(!_outputFile.is_open()){
@@ -97,6 +100,11 @@ Q2Agent::Q2Agent(int initX, int initY)
 		cout << "ERROR could not open prototype.csv file" << endl;
 	}
 
+	_kVectorFile.open("kvectors.csv", ios::out);
+	if(!_kVectorFile.is_open()){
+		cout << "ERROR could not open kvectors.csv file" << endl;
+	}
+
 	_rewardParamsFile.open("rewardParams.csv", ios::out);
 	if(!_rewardParamsFile.is_open()){
 		cout << "ERROR could not open rewardParams.csv file" << endl;
@@ -106,6 +114,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	//_outputFile << "<comma-delimited state values>,qTarget,qEstimate,ActionString" << endl;
 }
 
+//yada yada
 Q2Agent::~Q2Agent()
 {
 	if(_outputFile.is_open()){
@@ -436,10 +445,10 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 
 		//determine if agent is headed in a direction where it has already been, in the last k steps
 		//TODO: try both EMA and centroid/avg
-		x_prime = _locationEma.first - agent.x;
-		y_prime = _locationEma.second - agent.y;
-		//x_prime = _locationAvg.first - agent.x;
-		//y_prime = _locationAvg.second - agent.y;
+		//x_prime = _locationEma.first - agent.x;
+		//y_prime = _locationEma.second - agent.y;
+		x_prime = _locationAvg.first - agent.x;
+		y_prime = _locationAvg.second - agent.y;
 		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is on the goal
 			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = 1.0;
 		}
@@ -657,15 +666,17 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 
 	if(world->GetCell(agent.x, agent.y).isGoal){
 		reward = 1.0;
-		StoreTerminalState(reward);
 	}
 	else if(agent.sufferedCollision){
 		reward = -1.0;
-		StoreTerminalState(reward);
 	}
 	
 	if(world->GetCell(agent.x, agent.y).isTraversed){
-		reward -= 0.5
+		reward -= 0.5;
+	}
+
+	if(reward != 0.0){
+		StoreTerminalState(reward);
 	}
 
 	return reward;
@@ -677,22 +688,53 @@ or the reward() function, which returns the agent's estimate of the current rewa
 */
 void Q2Agent::_updateExternalReward(const World* world, const vector<Missile>& missiles)
 {
+	double reward = 0.0;
+
 	if(world->GetCell(agent.x, agent.y).isGoal){
-		_totalExternalReward += 1;
-		_rewardHistory.push_back(1);
-		StoreTerminalState(1);
+		reward = 1.0;
+		_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_GOAL_REACHED));
 	}
-	else if(agent.sufferedCollision){
-		_totalExternalReward -= -1;
-		_rewardHistory.push_back(-1);
-		StoreTerminalState(-1);
+	else{
+		if(agent.sufferedCollision){
+			reward = -1.0;
+			_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_COLLISION));
+		}
+		//for this to be useful the agent needs previous-location estimate data in the xs (state), which it gets through the cosine-visited attribute
+		if(world->GetCell(agent.x, agent.y).isTraversed){
+			reward = -1.0;
+			_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_REPETITION));
+		}
+	}
+
+	if(reward != 0.0){
+		StoreTerminalState(reward);
 	}
 }
 
+/*
+Flushes all of the k-vectors to whatever file they're going to.
+*/
+void Q2Agent::_flushRewardVectors()
+{
+	for(int i = 0; i < _kVectors.size(); i++){
+		kvector& kv = _kVectors[i];
+		//output all of the xs (the state vector values when reward was received)
+		for(int j = 0; j < kv.xs.size(); j++){
+			_kVectorFile << kv.xs[j] << ",";
+		}
+		_kVectorFile << kv.r << "," << kv.alpha << endl;
+	}
+
+	//clear current vectors
+	_kVectors.clear();
+}
 
 /*
 Some experimenting with learning the reward function values, which is the real goal of 
 reinforcement learning.
+
+NOTE: Make sure parameters correspond with the order of state attributes as they are output to
+training files: SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY
 */
 double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles)
 {
@@ -711,15 +753,16 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	//coef_Visited_Cosine = -1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
 	//coef_Goal_Cosine = 1.0;
 	//coef_CollisionProximity = 1.0;
-	coef_Goal_Cosine = 0.5;
-	coef_Visited_Cosine = -0.5; // the coefficient for the similarity of the agent's current location versus its where it has visited
-	coef_CollisionProximity = 0.9;
+	coef_Goal_Cosine = 0.7;
+	coef_Visited_Cosine = -0.845; // the coefficient for the similarity of the agent's current location versus its where it has visited
+	coef_CollisionProximity = 0.5;
 
-	//check if last action caused a collision
+	/*check if last action caused a collision
 	if(agent.sufferedCollision){
 		cout << "COLLISION ep=" << _episodeCount << endl;
 		//reward += COLLISION_COST;
 	}
+	*/
 
 	/*
 	if(world->GetCell(agent.x, agent.y).isGoal){
@@ -1148,9 +1191,13 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	_qNet.UpdateWeights(previousState, qTarget);
 	//cout << "44" << endl;
 
-	if(_episodeCount > 100){
+	if(_totalEpisodes > 100){
 		//record this example; this is useful for both replay-based learning and for data analysis
 		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+		//record the labeled external rewards as well, every so often
+		if(_totalEpisodes % 1000 == 0){
+			_flushRewardVectors();
+		}
 	}
 
 	//take the action with the highest q-value
@@ -1159,7 +1206,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if((rand() % 5) == 4){
+	if((rand() % 5) == 4 && _totalEpisodes < 105000){
 		if(rand() % 2 == 0)
 			CurrentAction = _getStochasticOptimalAction();
 		else
@@ -1261,7 +1308,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if( _totalEpisodes < 100000){
+	if(_totalEpisodes < 120000){
 		if(rand() % 5 == 4){
 			/*
 			if(rand() % 2 == 0)

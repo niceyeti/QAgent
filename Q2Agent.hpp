@@ -10,8 +10,21 @@
 
 //smaller values (3-5) have worked the best; larger values produce oscillations. The effect of a smaller number of memorized locations
 //is to let only the most recent locations push the agent, hence pushing the opposite in a more orthogonal direct wrt the visited region's radius
-#define NUM_MEMORIZED_LOCATIONS 10
+#define NUM_MEMORIZED_LOCATIONS 6
 
+//labels for the terminal reward alphas, which may provide useful datamining info: "agent received a -1.0, for event 'q'"
+#define ALPHA_GOAL_REACHED 'g'
+#define ALPHA_REPETITION 't'
+#define ALPHA_COLLISION 'c'
+
+class kvector{
+	public:
+		kvector()=delete;
+		kvector(const vector<double>& state, double reward, char label);
+		vector<double> xs; //x values (state vector) that occurred when this reward was received
+		double r;		//some external reward
+		char alpha;		//the label for this external reward event
+};
 
 class World;
 
@@ -54,9 +67,10 @@ class Q2Agent{
 		double _eta;
 		double _gamma;
 		double _totalExternalReward;
-		vector<double> _rewardHistory;
+		vector<kvector> _kVectors;
 		string _historyFilePath;
 		fstream _outputFile;
+		fstream _kVectorFile;
 		fstream _rewardParamsFile;
 		fstream _prototypeFile; //for storing state vectors reresenting terminal states (goal-reached, agent crashed, etc)
 		vector<vector<vector<double> > > _stateHistory; //likely only two states for now: t and t+1
@@ -90,6 +104,7 @@ class Q2Agent{
 		void _updateLocationMemory();
 		
 		//experimental logging
+		void _flushRewardVectors();
 		void _storeRewardParams(const vector<double>& state, double totalReward);
 		void _storeTerminalState(const vector<double>& state, double terminalValue);
 		void _storeLabeledVector(const vector<double>& state, double terminalValue, fstream& outputFile);
