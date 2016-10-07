@@ -67,8 +67,6 @@ for line in ifile.readlines():
 	else:
 		alphaDict[alpha].append(x)
 
-lr = linear_model.LogisticRegression()
-
 #build each dataset, run logistic regression, and output the parameters to file
 for alpha in alphaDict.keys():
 	#build the datasets to be input to fit()
@@ -80,6 +78,10 @@ for alpha in alphaDict.keys():
 	#create the binary output column: 1 for alpha's vectors, 0 for the others
 	Ys = [1 for i in range(0,len(posXs))] + [0 for i in range(0,len(negXs))]
 	Xs = posXs + negXs
+	classFreqDict = {1 : len(posXs), 0 : len(negXs)}
+	#build and run the logistic regression object
+	#lr = linear_model.LogisticRegression(C=0.001, class_weight="balanced")
+	lr = linear_model.LogisticRegression(class_weight="balanced")
 	lr.fit(Xs,Ys)
 	#output the alpha first
 	ofile.write(alpha+",")

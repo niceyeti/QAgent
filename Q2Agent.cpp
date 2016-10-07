@@ -758,7 +758,7 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 		//get value for this component
 		switch((int)it->first){
 			case 'g':
-				value = EXTERNAL_REWARD_GOAL * 0.1;
+				value = EXTERNAL_REWARD_GOAL;
 				break;
 			case 't':
 				value = EXTERNAL_REWARD_VISITED;
@@ -1251,6 +1251,9 @@ void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile
 	_qNet.SetEta(0.01);
 	if(_totalEpisodes > 1000){
 		_qNet.SetEta(0.05);
+	}
+	if(_totalEpisodes > 5000){
+		_qNet.SetEta(0.1);
 	}
 
 	//and just all the regular localized update
