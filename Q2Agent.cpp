@@ -741,22 +741,24 @@ then we calculate the risk across all of them.
 */
 double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles)
 {
+	const double one = 1.0;
 	double reward = 0.0, value;
 
 	//drive all the alpha neurons
 	for(auto it = _alphaNeurons.begin(); it != _alphaNeurons.end(); ++it){
 		Neuron& neuron = it->second;
-		//set up the neuron inputs
-		neuron.Inputs[SA_GOAL_COSINE] = &_stateHistory[_t][(int)CurrentAction][SA_GOAL_COSINE];
-		neuron.Inputs[SA_RECENT_LOCATION_COSINE] = &_stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE];
-		neuron.Inputs[SA_COLLISION_PROXIMITY] = &_stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY];
+		//set up the neuron inputs (indices are shifted since the 0th input is the bias
+		neuron.Inputs[0] = &one; //the bias
+		neuron.Inputs[SA_GOAL_COSINE+1] = &_stateHistory[_t][(int)CurrentAction][SA_GOAL_COSINE];
+		neuron.Inputs[SA_RECENT_LOCATION_COSINE+1] = &_stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE];
+		neuron.Inputs[SA_COLLISION_PROXIMITY+1] = &_stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY];
 		//and stimulate
 		neuron.Stimulate();
-		cout << "reward neuron prob: " << neuron.Output << endl;
+		cout << "reward neuron " << it->first << " prob: " << neuron.Output << endl;
 		//get value for this component
 		switch((int)it->first){
 			case 'g':
-				value = EXTERNAL_REWARD_GOAL;
+				value = EXTERNAL_REWARD_GOAL * 0.1;
 				break;
 			case 't':
 				value = EXTERNAL_REWARD_VISITED;
@@ -772,6 +774,7 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 		reward += (neuron.Output * value);
 	}
 
+	cout << "reward: " << reward << endl;
 	return reward;
 }
 
@@ -1194,19 +1197,18 @@ Here, the reward approximation works as follows:
 void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile>& missiles)
 {
 	//update the reward function parameters every k stimuli, for some large k
-	if(_kVectors.size() % 500 == 499){
+	if(_kVectors.size() % 1000 == 999){
 		string junk, line;
 		//for the sake of experimentation, I'm just outputting the k-vectors, mining them in python, then reading the output params back in
 		_flushRewardVectors();
-		cout << "Enter anything to continue, once python logistic regression has completed, and params can be read from rwdParams.txt" << endl;
-		cin >> junk;
+		//cout << "Enter anything to continue, once python logistic regression has completed, and params can be read from rwdParams.txt" << endl;
+		//cin >> junk;
 		//now read the reward params back in to each neuron
 		fstream paramFile;
 		paramFile.open("rwdParams.csv", ios::in);
-
 		while(getline(paramFile, line)){
 			vector<string> toks;
-			pair<char, vector<double>> vec;
+			pair<char, vector<double>> alphaParams;
 
 			//parse this csv line
 			_tokenize(line, ',', toks);
@@ -1214,7 +1216,7 @@ void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile
 				//parsing csv tokens: params file is expected to be formatted as alpha,alpha-reward,coef0,coef1,coef2,coef3
 				switch(i){
 					case 0:
-						vec.first = toks[i][0];
+						alphaParams.first = toks[i][0];
 						break;
 					case 1: //skip reward value
 						break;
@@ -1222,7 +1224,7 @@ void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile
 					case 3:
 					case 4:
 					case 5:
-						vec.second.push_back(stod(toks[i]));
+						alphaParams.second.push_back(stod(toks[i]));
 						break;
 					default:
 						cout << "ERROR parse category " << i << " not found in RewardApproximationUpdate of tok " << toks[i] << endl;
@@ -1230,20 +1232,26 @@ void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile
 						break;
 				}
 			}
-
-			//load these values into this alpha's neuron
-			Neuron& neuron = _alphaNeurons.at(vec.first);
-			if(neuron.Weights.size() != vec.second.size()){
-				cout << "ERROR parsing error in RewardApproximationUpdate(). " << neuron.Weights.size() << " != " << vec.second.size() << endl;
+			//load these reward parameters into this alpha's neuron
+			Neuron& neuron = _alphaNeurons.at(alphaParams.first);
+			if(neuron.Weights.size() != alphaParams.second.size()){
+				cout << "ERROR parsing error in RewardApproximationUpdate(). " << neuron.Weights.size() << " != " << alphaParams.second.size() << endl;
 			}
 			for(int i = 0; i < neuron.Weights.size(); i++){
-				neuron.Weights[i].w = vec.second[i];
+				cout << "setting weight " << i << " of " << alphaParams.first << " neuron to " << alphaParams.second[i] << endl;
+				neuron.Weights[i].w = alphaParams.second[i];
 				neuron.Weights[i].dw = 0;
 			}
+			//string junk3;
+			//cout << "enter something" << endl;
+			//cin >> junk3;
 		}
 	}
 
-
+	_qNet.SetEta(0.01);
+	if(_totalEpisodes > 1000){
+		_qNet.SetEta(0.05);
+	}
 
 	//and just all the regular localized update
 	Update(world, missiles);
