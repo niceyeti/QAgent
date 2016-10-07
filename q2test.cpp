@@ -28,8 +28,9 @@ int main(int argc, char** argv, char** env)
 			q2Agent.Update(&world,missiles);
 		}
 		*/
-		
-		q2Agent.Update(&world,missiles);
+
+		q2Agent.RewardApproximationUpdate(&world,missiles);
+		//q2Agent.Update(&world,missiles);
 		//q2Agent.LoopedUpdate(&world,missiles);
 		//q2Agent.ClassicalUpdate(&world,missiles);
 

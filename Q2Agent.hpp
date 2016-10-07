@@ -8,6 +8,7 @@
 #include "sys/types.h"
 #include "sys/wait.h"
 
+
 //smaller values (3-5) have worked the best; larger values produce oscillations. The effect of a smaller number of memorized locations
 //is to let only the most recent locations push the agent, hence pushing the opposite in a more orthogonal direct wrt the visited region's radius
 #define NUM_MEMORIZED_LOCATIONS 6
@@ -88,6 +89,7 @@ class Q2Agent{
 		vector<Experience> _batch;
 		int _batchIndex;
 
+		map<char,Neuron> _alphaNeurons;
 		void _takeAction(Action nextAction);
 		double _normalizedCosSim(double x1, double y1, double x2, double y2);
 		double _cosSim(double x1, double y1, double x2, double y2);
@@ -134,6 +136,7 @@ class Q2Agent{
 		double EpochActionCount;
 		double EpochCollisionCount;
 		double GoalResetThreshold;
+		void RewardApproximationUpdate(const World* world, const vector<Missile>& missiles);
 		void StoreTerminalState(double terminalValue);
 		void StoreRewardParams(const vector<double>& rewardParams, double reward);
 		void ResetEpoch(double terminalValue);

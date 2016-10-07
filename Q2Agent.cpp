@@ -1119,6 +1119,42 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 	//}
 }
 
+/*
+Learning experiment for which the agent experiences external rewards (collisions, goals, etc),
+periodically updating its reward() function based on these external rewards. These reward()
+function parameters then drive the q-value net.
+
+Here, the reward approximation works as follows:
+	1) Take actions in the world, giving a bag of vectors <states, external reward, alpha>, where 
+
+void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile>& missiles)
+{
+
+
+	//ramp up the leaning rate as the agent learns more from its external reward structure
+
+	//update the reward function parameters every hundred stimuli
+	if(_kVectors.size() % 100 == 99){
+		string junk;
+		//for the sake of experimentation, I'm just outputting the k-vectors, mining them in python, then reading the output params back in
+		_flushRewardVectors();
+		cout << "Enter anything to continue, once python logistic regression has completed, and params can be read from rwdParams.txt" << endl;
+		cin >> junk;
+		//now read the reward params back in to each neuron
+		fstream paramFile;
+		paramFile.open("rwdParams.csv", ios::in);
+		while(gets(paramFile)){
+			//	
+		}
+	}
+
+
+
+
+
+}
+*/
+
 
 /*
 TODO: Who acts upon whom? The agent upon the world, or vice versa? There are some theoretical and
@@ -1195,9 +1231,9 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 		//record this example; this is useful for both replay-based learning and for data analysis
 		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 		//record the labeled external rewards as well, every so often
-		if(_totalEpisodes % 1000 == 0){
-			_flushRewardVectors();
-		}
+		//if(_totalEpisodes % 1000 == 0){
+		//	_flushRewardVectors();
+		//}
 	}
 
 	//take the action with the highest q-value

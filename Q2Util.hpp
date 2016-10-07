@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
+#include <map>
 
 #define _USE_MATH_DEFINES
 #ifndef M_PI
