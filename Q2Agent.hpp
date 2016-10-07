@@ -13,11 +13,6 @@
 //is to let only the most recent locations push the agent, hence pushing the opposite in a more orthogonal direct wrt the visited region's radius
 #define NUM_MEMORIZED_LOCATIONS 6
 
-//labels for the terminal reward alphas, which may provide useful datamining info: "agent received a -1.0, for event 'q'"
-#define ALPHA_GOAL_REACHED 'g'
-#define ALPHA_REPETITION 't'
-#define ALPHA_COLLISION 'c'
-
 class kvector{
 	public:
 		kvector()=delete;
@@ -60,6 +55,8 @@ class Q2Agent{
 		int _epochCount;
 		vector<double> _currentActionValues; 
 		double _epochReward;
+		//the reward function coefficients		
+		double _coefGoalCos, _coefVisitedCos, _coefCollisionProx;
 		int _totalEpisodes;
 		double _lastEpochCollisionRate;
 		int _lastEpochActionCount;
@@ -100,7 +97,8 @@ class Q2Agent{
 		double _nearestObstacleDist(const World* world);
 		double _nearestObjectOnHeading(double headingX, double headingY, const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles);
-		double _getCurrentRewardValue_Manual(const World* world, const vector<Missile>& missiles);
+		double _getCurrentRewardValue_Manual1(const World* world, const vector<Missile>& missiles);
+		double _getCurrentRewardValue_Manual2(const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Terminal(const World* world, const vector<Missile>& missiles);
 		void _updateCurrentState(const World* world, const vector<Missile>& missiles);
 		void _updateLocationMemory();
@@ -125,6 +123,7 @@ class Q2Agent{
 		const vector<double>& _getCurrentState(Action action);
 		bool _isWallCollision(const World* world);
 		void _updateExternalReward(const World* world, const vector<Missile>& missiles);
+		void _tokenize(const string &s, char delim, vector<string> &tokens);
 	public:
 		Q2Agent()=delete;
 		Q2Agent(int initX, int initY);

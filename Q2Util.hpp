@@ -37,6 +37,14 @@ The architecture and update method is directly from Haykin, Neural Networks: A C
 
 using namespace std;
 
+//labels for the terminal reward alphas, which may provide useful datamining info: "agent received a -1.0, for event 'q'"
+#define ALPHA_GOAL_REACHED 'g'
+#define ALPHA_REPETITION 't'
+#define ALPHA_COLLISION 'c'
+#define EXTERNAL_REWARD_GOAL 1
+#define EXTERNAL_REWARD_VISITED -1
+#define EXTERNAL_REWARD_COLLISION -1
+
 //The actions. Each of which will have its own neural network
 #define NUM_ACTIONS 4
 //enum Action{ACTION_UP,ACTION_DOWN,ACTION_LEFT,ACTION_RIGHT,ACTION_SHOOT,ACTION_IDLE};

@@ -43,6 +43,8 @@ if len(sys.argv) < 3:
 	usage()
 	exit()
 
+print("Running logistic regression, outputting results to "+sys.argv[-1])
+
 ifile = open(sys.argv[1],"r")
 ofile = open(sys.argv[2],"w+")
 
@@ -50,19 +52,20 @@ ofile = open(sys.argv[2],"w+")
 alphaValues = {} #likely not used, but might need be desirable to preserve in the data for other maximization procs
 alphaDict = {}
 for line in ifile.readlines():
-	#alpha is column 0 of csv
 	csvToks = line.strip().split(",")
-	alpha = csvToks[0]
+	#alpha is last column of csv
+	alpha = csvToks[-1]
+	#get the input vector, prepending a bias
+	x = [1.0]+csvToks[0:-2]
 	#no item yet, so create on item list
 	if alpha not in alphaDict.keys():
 		alphaDict[alpha] = []
-		#vec is formatted as [x1, x2, x3, y], this stores only the x portion
-		vec = csvToks[1:-1]
-		alphaDict[alpha].append(vec)
+		print(alpha+" inputting vec: "+str(x))
+		alphaDict[alpha].append(x)
 		#store the "value" of this event, which is assumed constant whenever it occurs
-		alphaValues[alpha] = csvToks[-1]
+		alphaValues[alpha] = csvToks[-2]
 	else:
-		alphaDict[alpha].append(csvToks[1:-1])
+		alphaDict[alpha].append(x)
 
 lr = linear_model.LogisticRegression()
 
@@ -73,14 +76,24 @@ for alpha in alphaDict.keys():
 	negXs = []
 	for other in alphaDict.keys():
 		if other != alpha:
-			negXs.append(alphaDict[other])
+			negXs += alphaDict[other]
 	#create the binary output column: 1 for alpha's vectors, 0 for the others
 	Ys = [1 for i in range(0,len(posXs))] + [0 for i in range(0,len(negXs))]
 	Xs = posXs + negXs
 	lr.fit(Xs,Ys)
-	for c in lr.coefs_:
-		ofile.write(str(c)+",")
-	ofile.write(alpha)
+	#output the alpha first
+	ofile.write(alpha+",")
+	#output the alpha-reward value
+	ofile.write(alphaValues[alpha]+",")
+	#print("got coefs: "+str(lr.coef_[0]))
+	i = 0
+	while i < len(lr.coef_[0]):
+		c = lr.coef_[0][i]
+		if i < len(lr.coef_[0]) - 1:
+			ofile.write(str(c)+",")
+		else:
+			ofile.write(str(c)+"\n")
+		i+=1
 
 ofile.close()
 ifile.close()

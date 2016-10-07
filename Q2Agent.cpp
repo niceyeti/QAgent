@@ -88,6 +88,11 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_locationAvg.first = 0.0;
 	_locationAvg.second = 0.0;
 	
+	//set up the expectation maximization neurons
+	_alphaNeurons.insert( pair<char,Neuron>(ALPHA_GOAL_REACHED, Neuron(STATE_DIMENSION + 1, LOGISTIC)));
+	_alphaNeurons.insert( pair<char,Neuron>(ALPHA_REPETITION, Neuron(STATE_DIMENSION + 1, LOGISTIC)));
+	_alphaNeurons.insert( pair<char,Neuron>(ALPHA_COLLISION, Neuron(STATE_DIMENSION + 1, LOGISTIC)));
+
 	//set up the various output files
 	_historyFilePath = "./history.txt";
 	_outputFile.open(_historyFilePath,ios::out);
@@ -691,17 +696,17 @@ void Q2Agent::_updateExternalReward(const World* world, const vector<Missile>& m
 	double reward = 0.0;
 
 	if(world->GetCell(agent.x, agent.y).isGoal){
-		reward = 1.0;
+		reward = EXTERNAL_REWARD_GOAL;
 		_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_GOAL_REACHED));
 	}
 	else{
 		if(agent.sufferedCollision){
-			reward = -1.0;
+			reward = EXTERNAL_REWARD_COLLISION;
 			_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_COLLISION));
 		}
 		//for this to be useful the agent needs previous-location estimate data in the xs (state), which it gets through the cosine-visited attribute
 		if(world->GetCell(agent.x, agent.y).isTraversed){
-			reward = -1.0;
+			reward = EXTERNAL_REWARD_VISITED;
 			_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_REPETITION));
 		}
 	}
@@ -729,6 +734,49 @@ void Q2Agent::_flushRewardVectors()
 	_kVectors.clear();
 }
 
+
+/*
+The EM version of the reward function. Here, the alpha-neurons are just driven,
+then we calculate the risk across all of them.
+*/
+double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles)
+{
+	double reward = 0.0, value;
+
+	//drive all the alpha neurons
+	for(auto it = _alphaNeurons.begin(); it != _alphaNeurons.end(); ++it){
+		Neuron& neuron = it->second;
+		//set up the neuron inputs
+		neuron.Inputs[SA_GOAL_COSINE] = &_stateHistory[_t][(int)CurrentAction][SA_GOAL_COSINE];
+		neuron.Inputs[SA_RECENT_LOCATION_COSINE] = &_stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE];
+		neuron.Inputs[SA_COLLISION_PROXIMITY] = &_stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY];
+		//and stimulate
+		neuron.Stimulate();
+		cout << "reward neuron prob: " << neuron.Output << endl;
+		//get value for this component
+		switch((int)it->first){
+			case 'g':
+				value = EXTERNAL_REWARD_GOAL;
+				break;
+			case 't':
+				value = EXTERNAL_REWARD_VISITED;
+				break;
+			case 'c':
+				value = EXTERNAL_REWARD_COLLISION;
+				break;
+			default:
+				cout << "ERROR no case found for " << it->first << " in _getCurrentRewardValue_Learnt" << endl;
+				break;
+		}
+		//update the expected value with this component
+		reward += (neuron.Output * value);
+	}
+
+	return reward;
+}
+
+
+
 /*
 Some experimenting with learning the reward function values, which is the real goal of 
 reinforcement learning.
@@ -736,7 +784,7 @@ reinforcement learning.
 NOTE: Make sure parameters correspond with the order of state attributes as they are output to
 training files: SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY
 */
-double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles)
+double Q2Agent::_getCurrentRewardValue_Manual1(const World* world, const vector<Missile>& missiles)
 {
 	//int x_prime, y_prime;
 	double reward = 0.0;
@@ -746,16 +794,16 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	//double REPETITION_COST = 0.0;
 	//double GOAL_REWARD = 5.0;
 	//the unknown coefficients; hard-coding is cheating, the point is to learn these
-	double coef_Goal_Cosine, coef_Visited_Cosine, coef_CollisionProximity;
+	//double _coefGoalCos, _coefVisitedCos, _coefCollisionProx;
 
 
 	//opt, with linear regression: 0.16115334 -0.08905619  0.83468276
-	//coef_Visited_Cosine = -1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
-	//coef_Goal_Cosine = 1.0;
-	//coef_CollisionProximity = 1.0;
-	coef_Goal_Cosine = 0.7;
-	coef_Visited_Cosine = -0.845; // the coefficient for the similarity of the agent's current location versus its where it has visited
-	coef_CollisionProximity = 0.5;
+	//_coefVisitedCos = -1.0; // the coefficient for the similarity of the agent's current location versus its where it has visited
+	//_coefGoalCos = 1.0;
+	//_coefCollisionProx = 1.0;
+	_coefGoalCos = 0.7;
+	_coefVisitedCos = -0.845; // the coefficient for the similarity of the agent's current location versus its where it has visited
+	_coefCollisionProx = 0.5;
 
 	/*check if last action caused a collision
 	if(agent.sufferedCollision){
@@ -775,20 +823,20 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 	*/
 
 	//update the cosine-based reward
-	reward += (coef_Goal_Cosine * _stateHistory[_t][CurrentAction][SA_GOAL_COSINE]);
+	reward += (_coefGoalCos * _stateHistory[_t][CurrentAction][SA_GOAL_COSINE]);
 
 	//punish for revisiting locations (cossim is negated, since we desire dissimilarity)
-	reward += (coef_Visited_Cosine * _stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE]);
+	reward += (_coefVisitedCos * _stateHistory[_t][(int)CurrentAction][SA_RECENT_LOCATION_COSINE]);
 
 	//add in a punishment for distance to nearest obstacle on heading (experimental; NOTE this requires state vector collision proximity attribute has been set)
 	//reward += (-MAX_COLLISION_PROXIMITY_RANGE + _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
-	reward += (coef_CollisionProximity * _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
+	reward += (_coefCollisionProx * _stateHistory[_t][(int)CurrentAction][SA_COLLISION_PROXIMITY]);
 
 	//cout << "reward: " << reward << endl;
 	return reward;
 }
 
-double Q2Agent::_getCurrentRewardValue_Manual(const World* world, const vector<Missile>& missiles)
+double Q2Agent::_getCurrentRewardValue_Manual2(const World* world, const vector<Missile>& missiles)
 {
 	int x_prime, y_prime;
 	double reward = 0.0;
@@ -1119,6 +1167,21 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 	//}
 }
 
+//Given a line, tokenize it using delim, storing the tokens in output
+void Q2Agent::_tokenize(const string &s, char delim, vector<string> &tokens)
+{
+    stringstream ss(s);
+    string temp;
+	
+	//clear any existing tokens
+	tokens.clear();
+	
+    while (getline(ss, temp, delim)) {
+        tokens.push_back(temp);
+    }
+}
+
+
 /*
 Learning experiment for which the agent experiences external rewards (collisions, goals, etc),
 periodically updating its reward() function based on these external rewards. These reward()
@@ -1127,15 +1190,12 @@ function parameters then drive the q-value net.
 Here, the reward approximation works as follows:
 	1) Take actions in the world, giving a bag of vectors <states, external reward, alpha>, where 
 
+*/
 void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile>& missiles)
 {
-
-
-	//ramp up the leaning rate as the agent learns more from its external reward structure
-
-	//update the reward function parameters every hundred stimuli
-	if(_kVectors.size() % 100 == 99){
-		string junk;
+	//update the reward function parameters every k stimuli, for some large k
+	if(_kVectors.size() % 500 == 499){
+		string junk, line;
 		//for the sake of experimentation, I'm just outputting the k-vectors, mining them in python, then reading the output params back in
 		_flushRewardVectors();
 		cout << "Enter anything to continue, once python logistic regression has completed, and params can be read from rwdParams.txt" << endl;
@@ -1143,17 +1203,51 @@ void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile
 		//now read the reward params back in to each neuron
 		fstream paramFile;
 		paramFile.open("rwdParams.csv", ios::in);
-		while(gets(paramFile)){
-			//	
+
+		while(getline(paramFile, line)){
+			vector<string> toks;
+			pair<char, vector<double>> vec;
+
+			//parse this csv line
+			_tokenize(line, ',', toks);
+			for(int i = 0; i < toks.size(); i++){
+				//parsing csv tokens: params file is expected to be formatted as alpha,alpha-reward,coef0,coef1,coef2,coef3
+				switch(i){
+					case 0:
+						vec.first = toks[i][0];
+						break;
+					case 1: //skip reward value
+						break;
+					case 2: //parse the coefs
+					case 3:
+					case 4:
+					case 5:
+						vec.second.push_back(stod(toks[i]));
+						break;
+					default:
+						cout << "ERROR parse category " << i << " not found in RewardApproximationUpdate of tok " << toks[i] << endl;
+						cout << "and line " << line << endl;
+						break;
+				}
+			}
+
+			//load these values into this alpha's neuron
+			Neuron& neuron = _alphaNeurons.at(vec.first);
+			if(neuron.Weights.size() != vec.second.size()){
+				cout << "ERROR parsing error in RewardApproximationUpdate(). " << neuron.Weights.size() << " != " << vec.second.size() << endl;
+			}
+			for(int i = 0; i < neuron.Weights.size(); i++){
+				neuron.Weights[i].w = vec.second[i];
+				neuron.Weights[i].dw = 0;
+			}
 		}
 	}
 
 
 
-
-
+	//and just all the regular localized update
+	Update(world, missiles);
 }
-*/
 
 
 /*
@@ -1209,7 +1303,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	}
 	
 	//get the target q factor from the experienced reward given the last action
-	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
+	//double reward = _getCurrentRewardValue_Manual1(world, missiles);
 	double reward = _getCurrentRewardValue_Learnt(world, missiles);
 	//cout << "reward: " << reward << endl;
 	qTarget = reward + _gamma * maxQ;
