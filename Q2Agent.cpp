@@ -58,7 +58,6 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 	_t = 0; //time series index
 	_currentActionValues.resize(NUM_ACTIONS); //for caching the q-values per action, instead of re-calling Classify() on the net, per action
-
 	//init the neural networks, one for each action
 	_qNet.BuildNet(2, STATE_DIMENSION, 12, 1); //this is just generic, for testing;
 	//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
@@ -705,7 +704,7 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 Updates the agent's externally-received reward value. Don't confuse this with the reward coefficient vector,
 or the reward() function, which returns the agent's estimate of the current reward.
 */
-void Q2Agent::_updateExternalReward(const World* world, const vector<Missile>& missiles)
+double Q2Agent::_updateExternalReward(const World* world, const vector<Missile>& missiles)
 {
 	double reward = 0.0;
 
@@ -728,6 +727,8 @@ void Q2Agent::_updateExternalReward(const World* world, const vector<Missile>& m
 	if(reward != 0.0){
 		StoreTerminalState(reward);
 	}
+
+	return reward;
 }
 
 /*
@@ -1076,7 +1077,6 @@ For instance, agent crashes when state vector is x1,x2,x3 log this as x1,x2,x3,-
 this way the agent could periodically (after logging many epochs) learn the terminal-prototypes
 to determine the reward function parameters.
 
-http://123movies.to/film/john-wick-1631/watching.html
 
 @state: A vector of state data which was held when the agent reached some terminal condition (a snapshot).
 @terminalValue: Some value, which for now ought to be just +/-1. The values could be a scalar, but its
@@ -1200,8 +1200,99 @@ void Q2Agent::_tokenize(const string &s, char delim, vector<string> &tokens)
     }
 }
 
+/*
+
+*/
 void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile>& missiles)
-{}
+{
+	int action = 0;
+	double maxQ = 0, qTarget = 0, reward = 0, rewardTarget = 0, rewardEstimate = 0, prevEstimate = 0;
+	Action optimalAction = ACTION_UP;
+
+	//Update agent's current state and state history for all possible actions
+	_updateCurrentState(world, missiles);
+
+	//Update external rewards (agent ran into wall, reached goal, etc)
+	rewardTarget = _updateExternalReward(world,missiles);
+	_rewardApproximator.Classify(_getCurrentState((Action)action));
+	rewardEstimate = _rewardApproximator.GetOutputs()[0].Output;
+	//only backpropagate non-zero external rewards (significant events)
+	if(rewardTarget != 0.0){
+		cout << "updating reward net" << endl;
+		_rewardApproximator.BackpropagateError(_getCurrentState((Action)action), rewardTarget);
+		_rewardApproximator.UpdateWeights(_getCurrentState((Action)action), rewardTarget);
+	}
+
+	for(int i = 0; i < 10; i++){
+	//classify the new current-state across all action-nets 
+	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
+		//classify the state we just entered, given the previous action
+		_qNet.Classify(_getCurrentState((Action)action));
+		//cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
+		_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
+		//track the max action available in current state
+		if(_qNet.GetOutputs()[0].Output > maxQ){
+			maxQ = _qNet.GetOutputs()[0].Output;
+			optimalAction = (Action)action;
+		}
+	}
+	
+	//get the target q factor from the experienced reward given the last action
+	//double reward = _getCurrentRewardValue_Manual1(world, missiles);
+	//double reward = _getCurrentRewardValue_Learnt(world, missiles);
+	//cout << "reward: " << reward << endl;
+	qTarget = rewardEstimate + _gamma * maxQ;
+	//cout << "QTARGET: " << qTarget << endl;
+	_epochReward += qTarget;
+	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
+
+	//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+	//backpropagate the error and update the network weights for the last action (only)
+	const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+	_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+	prevEstimate = _qNet.GetOutputs()[0].Output;
+	//cout << "prev estimate: " << prevEstimate << endl;
+	_qNet.BackpropagateError(previousState, qTarget);
+	_qNet.UpdateWeights(previousState, qTarget);
+	//cout << "44" << endl;
+	}
+
+	if(_totalEpisodes > 100){
+		//record this example; this is useful for both replay-based learning and for data analysis
+		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+		//record the labeled external rewards as well, every so often
+		//if(_totalEpisodes % 1000 == 0){
+		//	_flushRewardVectors();
+		//}
+	}
+
+	//take the action with the highest q-value
+	//LastAction = CurrentAction;
+	CurrentAction = optimalAction;
+
+	//randomize the action n% of the time
+	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
+	if((rand() % 5) == 4 && _totalEpisodes < 5000){
+		if(rand() % 2 == 0)
+			CurrentAction = _getStochasticOptimalAction();
+		else
+			CurrentAction = (Action)(rand() % NUM_ACTIONS);
+	}
+
+	//map the action into outputs
+	_takeAction(CurrentAction);
+
+	//some metalogic stuff: random restarts and force agent to move if in same place too long
+	//TODO: this member represents bad coupling
+	agent.sufferedCollision = false;
+	_episodeCount++;
+	_totalEpisodes++;
+
+	//testing: print the neural net weights
+	//if(_episodeCount % 100 == 1){
+		//_qNet.PrintWeights();
+	//}
+}
 
 
 /*

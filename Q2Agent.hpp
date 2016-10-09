@@ -102,6 +102,7 @@ class Q2Agent{
 		double _getCurrentRewardValue_Manual2(const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Terminal(const World* world, const vector<Missile>& missiles);
 		void _updateCurrentState(const World* world, const vector<Missile>& missiles);
+		double _updateExternalReward(const World* world, const vector<Missile>& missiles);
 		void _updateLocationMemory();
 		
 		//experimental logging
@@ -123,7 +124,6 @@ class Q2Agent{
 		const vector<double>& _getPreviousState(Action action);
 		const vector<double>& _getCurrentState(Action action);
 		bool _isWallCollision(const World* world);
-		void _updateExternalReward(const World* world, const vector<Missile>& missiles);
 		void _tokenize(const string &s, char delim, vector<string> &tokens);
 	public:
 		Q2Agent()=delete;
