@@ -29,19 +29,19 @@ int main(int argc, char** argv, char** env)
 		}
 		*/
 
-		q2Agent.RewardApproximationUpdate(&world,missiles);
-		//q2Agent.Update(&world,missiles);
+		//q2Agent.RewardApproximationUpdate(&world,missiles);
+		q2Agent.Update(&world,missiles);
 		//q2Agent.LoopedUpdate(&world,missiles);
 		//q2Agent.ClassicalUpdate(&world,missiles);
 
 		//Update and draw the world; this is just updating a model and displaying a view
 		world.Update(missiles, &q2Agent, 1.0);
 		//only draw and delay once we want to see the agent's behavior
-		if(t > 100000){
+		//if(t > 100000){
 			world.Draw(missiles, q2Agent.agent);
 			q2Agent.PrintState();
-			//usleep(5000);
-		}
+			usleep(20000);
+		//}
 		t++;
 	}
 

@@ -11,7 +11,7 @@
 
 //smaller values (3-5) have worked the best; larger values produce oscillations. The effect of a smaller number of memorized locations
 //is to let only the most recent locations push the agent, hence pushing the opposite in a more orthogonal direct wrt the visited region's radius
-#define NUM_MEMORIZED_LOCATIONS 6
+#define NUM_MEMORIZED_LOCATIONS 8
 
 class kvector{
 	public:

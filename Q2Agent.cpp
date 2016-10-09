@@ -211,11 +211,14 @@ TODO: Is this desirable over zero-mean? The only reason I'm keeping this around 
 */
 void Q2Agent::_normalizeStateVector(const World* world, vector<double>& state)
 {
+	//both cos-sim metrics just get shiftd down by one to give them range -2.0 (opposite some other point), to 0.0 (in direction of some point)
 	state[SA_GOAL_COSINE] = state[SA_GOAL_COSINE] - 1.0;
-	state[SA_RECENT_LOCATION_COSINE] = state[SA_RECENT_LOCATION_COSINE] - 1.0;
+	//the direction maximizing this cossim is if agent goes in the direction of its previous location. since this is
+	//undesirable, i reverse the cossim metric, such that -2.0 is the direction maximizing similarity to previous locations, and 0.0 is best
+	state[SA_RECENT_LOCATION_COSINE] = -2.0 - (state[SA_RECENT_LOCATION_COSINE] - 1.0);
 	//note cosine attribute is not normalized, since cosine is inherently normalized
 	//cout << "collision proximity: " << 	state[SA_COLLISION_PROXIMITY] << endl;
-	//collision proximity is scaled to [-1.0,1.0], where -1.0 is worst (immediate collision) and 1.0 is greatest distance to an obstacle
+	//collision proximity is scaled to [-2.0,0.0], where -2.0 is worst (immediate collision) and 0.0 is greatest distance to an obstacle
 	state[SA_COLLISION_PROXIMITY] = 0.0 - (2.0 * ((double)MAX_COLLISION_PROXIMITY_RANGE - state[SA_COLLISION_PROXIMITY])) / (double)MAX_COLLISION_PROXIMITY_RANGE;
 	//cout << "AFTER: " << state[SA_COLLISION_PROXIMITY] << endl;
 	//goal distance is scaled to range [-1.0,1.0] with -1.0 being worst (greatest distance) and 1.0 being the best
@@ -454,7 +457,7 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 		//y_prime = _locationEma.second - agent.y;
 		x_prime = _locationAvg.first - agent.x;
 		y_prime = _locationAvg.second - agent.y;
-		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is on the goal
+		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is at its previous location estimate
 			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = 1.0;
 		}
 		else{
@@ -761,7 +764,8 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 				value = EXTERNAL_REWARD_GOAL;
 				break;
 			case 't':
-				value = EXTERNAL_REWARD_VISITED;
+				//value = EXTERNAL_REWARD_VISITED;
+				value = 0;
 				break;
 			case 'c':
 				value = EXTERNAL_REWARD_COLLISION;
@@ -1201,8 +1205,8 @@ void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile
 		string junk, line;
 		//for the sake of experimentation, I'm just outputting the k-vectors, mining them in python, then reading the output params back in
 		_flushRewardVectors();
-		//cout << "Enter anything to continue, once python logistic regression has completed, and params can be read from rwdParams.txt" << endl;
-		//cin >> junk;
+		cout << "Enter anything to continue, once python logistic regression has completed, and params can be read from rwdParams.txt" << endl;
+		cin >> junk;
 		//now read the reward params back in to each neuron
 		fstream paramFile;
 		paramFile.open("rwdParams.csv", ios::in);
@@ -1314,8 +1318,8 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	}
 	
 	//get the target q factor from the experienced reward given the last action
-	//double reward = _getCurrentRewardValue_Manual1(world, missiles);
-	double reward = _getCurrentRewardValue_Learnt(world, missiles);
+	double reward = _getCurrentRewardValue_Manual1(world, missiles);
+	//double reward = _getCurrentRewardValue_Learnt(world, missiles);
 	//cout << "reward: " << reward << endl;
 	qTarget = reward + _gamma * maxQ;
 	//cout << "QTARGET: " << qTarget << endl;
@@ -1347,7 +1351,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if((rand() % 5) == 4 && _totalEpisodes < 105000){
+	if((rand() % 5) == 4 && _totalEpisodes < 3000){
 		if(rand() % 2 == 0)
 			CurrentAction = _getStochasticOptimalAction();
 		else

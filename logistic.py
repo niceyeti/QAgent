@@ -80,8 +80,7 @@ for alpha in alphaDict.keys():
 	Xs = posXs + negXs
 	classFreqDict = {1 : len(posXs), 0 : len(negXs)}
 	#build and run the logistic regression object
-	#lr = linear_model.LogisticRegression(C=0.001, class_weight="balanced")
-	lr = linear_model.LogisticRegression(class_weight="balanced")
+	lr = linear_model.LogisticRegression(C=0.001)
 	lr.fit(Xs,Ys)
 	#output the alpha first
 	ofile.write(alpha+",")
