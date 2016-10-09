@@ -136,7 +136,6 @@ class Q2Agent{
 		double EpochActionCount;
 		double EpochCollisionCount;
 		double GoalResetThreshold;
-		void RewardApproximationUpdate(const World* world, const vector<Missile>& missiles);
 		void StoreTerminalState(double terminalValue);
 		void StoreRewardParams(const vector<double>& rewardParams, double reward);
 		void ResetEpoch(double terminalValue);
@@ -147,6 +146,8 @@ class Q2Agent{
 		//void MinibatchUpdate(const World* world, const vector<Missile>& missiles);
 		//void OfflineUpdate(const World* world, const vector<Missile>& missiles);
 		//void EpochalUpdate(const World* world, const vector<Missile>& missiles);
+		void DirectApproximationUpdate(const World* world, const vector<Missile>& missiles);
+		void LogisticRewardApproximationUpdate(const World* world, const vector<Missile>& missiles);
 		void ClassicalUpdate(const World* world, const vector<Missile>& missiles);
 		void Update(const World* world, const vector<Missile>& missiles);
 		Action CurrentAction;

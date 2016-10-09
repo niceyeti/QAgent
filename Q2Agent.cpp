@@ -1076,6 +1076,7 @@ For instance, agent crashes when state vector is x1,x2,x3 log this as x1,x2,x3,-
 this way the agent could periodically (after logging many epochs) learn the terminal-prototypes
 to determine the reward function parameters.
 
+http://123movies.to/film/john-wick-1631/watching.html
 
 @state: A vector of state data which was held when the agent reached some terminal condition (a snapshot).
 @terminalValue: Some value, which for now ought to be just +/-1. The values could be a scalar, but its
@@ -1199,6 +1200,9 @@ void Q2Agent::_tokenize(const string &s, char delim, vector<string> &tokens)
     }
 }
 
+void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile>& missiles)
+{}
+
 
 /*
 Learning experiment for which the agent experiences external rewards (collisions, goals, etc),
@@ -1209,7 +1213,7 @@ Here, the reward approximation works as follows:
 	1) Take actions in the world, giving a bag of vectors <states, external reward, alpha>, where 
 
 */
-void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile>& missiles)
+void Q2Agent::LogisticRewardApproximationUpdate(const World* world, const vector<Missile>& missiles)
 {
 	//update the reward function parameters every k stimuli, for some large k
 	if(_kVectors.size() % 2000 == 1999){
@@ -1362,7 +1366,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if((rand() % 5) == 4 && _totalEpisodes < 100000){
+	if((rand() % 5) == 4 && _totalEpisodes < 105000){
 		if(rand() % 2 == 0)
 			CurrentAction = _getStochasticOptimalAction();
 		else
