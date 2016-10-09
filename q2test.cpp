@@ -40,7 +40,7 @@ int main(int argc, char** argv, char** env)
 		//if(t > 100000){
 			world.Draw(missiles, q2Agent.agent);
 			q2Agent.PrintState();
-			usleep(20000);
+			//usleep(20000);
 		//}
 		t++;
 	}

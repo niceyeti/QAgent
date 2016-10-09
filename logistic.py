@@ -82,6 +82,7 @@ for alpha in alphaDict.keys():
 	#build and run the logistic regression object
 	lr = linear_model.LogisticRegression(C=0.001)
 	lr.fit(Xs,Ys)
+	print("coefs "+alpha+": "+str(lr.coef_))
 	#output the alpha first
 	ofile.write(alpha+",")
 	#output the alpha-reward value

@@ -81,6 +81,7 @@ class Q2Agent{
 		pair<double, double> _locationAvg;
 		//in this implementation, the agent has only a single q network
 		MultilayerNetwork _qNet;
+		MultilayerNetwork _rewardApproximator;
 		double _experiencedQValue;
 		//short-term memory for the agent
 		vector<Experience> _batch;

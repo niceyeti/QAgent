@@ -71,6 +71,17 @@ Q2Agent::Q2Agent(int initX, int initY)
 	//set the regularization term
 	_qNet.SetWeightDecay(0.001);
 
+	//init the reward-approximation neural net (this is purely experimental, may not be used in all learning paradigms)
+	_rewardApproximator.BuildNet(2, STATE_DIMENSION, STATE_DIMENSION + 1, 1); //this is just generic, for testing;
+	_rewardApproximator.SetHiddenLayerFunction(LOGISTIC);
+	_rewardApproximator.SetOutputLayerFunction(TANH);
+	_rewardApproximator.InitializeWeights();
+	_rewardApproximator.SetEta(0.1);
+	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
+	_rewardApproximator.SetMomentum(0.2);
+	//set the regularization term
+	_rewardApproximator.SetWeightDecay(0.001);
+
 	//init the state history; only t and t+1 for now
 	_stateHistory.resize(2);
 	for(int i = 0; i < _stateHistory.size(); i++){
@@ -764,7 +775,7 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 				value = EXTERNAL_REWARD_GOAL;
 				break;
 			case 't':
-				//value = EXTERNAL_REWARD_VISITED;
+				value = EXTERNAL_REWARD_VISITED;
 				value = 0;
 				break;
 			case 'c':
@@ -1201,7 +1212,7 @@ Here, the reward approximation works as follows:
 void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile>& missiles)
 {
 	//update the reward function parameters every k stimuli, for some large k
-	if(_kVectors.size() % 1000 == 999){
+	if(_kVectors.size() % 2000 == 1999){
 		string junk, line;
 		//for the sake of experimentation, I'm just outputting the k-vectors, mining them in python, then reading the output params back in
 		_flushRewardVectors();
@@ -1260,7 +1271,7 @@ void Q2Agent::RewardApproximationUpdate(const World* world, const vector<Missile
 		_qNet.SetEta(0.1);
 	}
 
-	//and just all the regular localized update
+	//run the regular localized update
 	Update(world, missiles);
 }
 
@@ -1351,7 +1362,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if((rand() % 5) == 4 && _totalEpisodes < 3000){
+	if((rand() % 5) == 4 && _totalEpisodes < 100000){
 		if(rand() % 2 == 0)
 			CurrentAction = _getStochasticOptimalAction();
 		else
