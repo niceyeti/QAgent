@@ -53,7 +53,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.03;
+	_eta = 0.1;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time series index
@@ -71,9 +71,9 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_qNet.SetWeightDecay(0.001);
 
 	//init the reward-approximation neural net (this is purely experimental, may not be used in all learning paradigms)
-	_rewardApproximator.BuildNet(2, STATE_DIMENSION, STATE_DIMENSION + 1, 1); //this is just generic, for testing;
-	_rewardApproximator.SetHiddenLayerFunction(LOGISTIC);
-	_rewardApproximator.SetOutputLayerFunction(TANH);
+	_rewardApproximator.BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 5, 1); //this is just generic, for testing;
+	_rewardApproximator.SetHiddenLayerFunction(TANH);
+	_rewardApproximator.SetOutputLayerFunction(LINEAR);
 	_rewardApproximator.InitializeWeights();
 	_rewardApproximator.SetEta(0.1);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
@@ -709,17 +709,17 @@ double Q2Agent::_updateExternalReward(const World* world, const vector<Missile>&
 	double reward = 0.0;
 
 	if(world->GetCell(agent.x, agent.y).isGoal){
-		reward = EXTERNAL_REWARD_GOAL;
+		reward += EXTERNAL_REWARD_GOAL;
 		_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_GOAL_REACHED));
 	}
 	else{
 		if(agent.sufferedCollision){
-			reward = EXTERNAL_REWARD_COLLISION;
+			reward += EXTERNAL_REWARD_COLLISION;
 			_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_COLLISION));
 		}
 		//for this to be useful the agent needs previous-location estimate data in the xs (state), which it gets through the cosine-visited attribute
 		if(world->GetCell(agent.x, agent.y).isTraversed){
-			reward = EXTERNAL_REWARD_VISITED;
+			reward += EXTERNAL_REWARD_VISITED;
 			_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_REPETITION));
 		}
 	}
@@ -1223,7 +1223,7 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 		_rewardApproximator.UpdateWeights(_getCurrentState((Action)action), rewardTarget);
 	}
 
-	for(int i = 0; i < 10; i++){
+	for(int i = 0; i < 1; i++){
 	//classify the new current-state across all action-nets 
 	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
 		//classify the state we just entered, given the previous action
@@ -1240,21 +1240,24 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 	//get the target q factor from the experienced reward given the last action
 	//double reward = _getCurrentRewardValue_Manual1(world, missiles);
 	//double reward = _getCurrentRewardValue_Learnt(world, missiles);
-	//cout << "reward: " << reward << endl;
+	cout << "reward: " << rewardEstimate << " actual: " << rewardTarget << endl;
 	qTarget = rewardEstimate + _gamma * maxQ;
 	//cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
-	//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
-	//backpropagate the error and update the network weights for the last action (only)
-	const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
-	_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
-	prevEstimate = _qNet.GetOutputs()[0].Output;
-	//cout << "prev estimate: " << prevEstimate << endl;
-	_qNet.BackpropagateError(previousState, qTarget);
-	_qNet.UpdateWeights(previousState, qTarget);
-	//cout << "44" << endl;
+	//this seems to work nicely, to prevent unlearning from many non-terminal experiences
+	if(rewardEstimate != 0){
+		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+		//backpropagate the error and update the network weights for the last action (only)
+		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+		_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+		prevEstimate = _qNet.GetOutputs()[0].Output;
+		//cout << "prev estimate: " << prevEstimate << endl;
+		_qNet.BackpropagateError(previousState, qTarget);
+		_qNet.UpdateWeights(previousState, qTarget);
+		//cout << "44" << endl;
+	}
 	}
 
 	if(_totalEpisodes > 100){
@@ -1272,7 +1275,7 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if((rand() % 5) == 4 && _totalEpisodes < 5000){
+	if((rand() % 5) == 4 && _totalEpisodes < 10000){
 		if(rand() % 2 == 0)
 			CurrentAction = _getStochasticOptimalAction();
 		else
@@ -1512,7 +1515,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//Update agent's current state and state history for all possible actions
 	_updateCurrentState(world, missiles);
 
-	//_qNet.SetEta(0.1);
+	_qNet.SetEta(0.05);
 
 	//classify the new current-state across all action-nets 
 	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
@@ -1537,7 +1540,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
-	if(reward != 0.0){
+	//if(reward != 0.0){
 			//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 			//backpropagate the error and update the network weights for the last action (only)
 			const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
@@ -1551,7 +1554,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 			//record this example; this is useful for both replay-based learning and for data analysis
 			_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 		}
-	}
+	//}
 
 	//take the action with the highest q-value
 	//LastAction = CurrentAction;
@@ -1559,7 +1562,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if(_totalEpisodes < 120000){
+	if(_totalEpisodes < 11000){
 		if(rand() % 5 == 4){
 			/*
 			if(rand() % 2 == 0)

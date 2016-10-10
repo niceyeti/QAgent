@@ -162,6 +162,9 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 		_restartAgent(qagent,1.0);
 	}
 	else{
+		//this is deliberately set *before* the agent moves, otherwise the agent always perceives it already visited its new location
+		GetCell(qagent->agent.x, qagent->agent.y).isTraversed = true;
+
 		newX = qagent->agent.x + qagent->agent.xVelocity * timeStep;	
 		newY = qagent->agent.y + qagent->agent.yVelocity * timeStep;
 		//inform the agent of any collision
@@ -194,7 +197,7 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 	}
 
 	//if(IsValidPosition(agent.x, agent.y)){
-	GetCell(qagent->agent.x, qagent->agent.y).isTraversed = true;
+
 	//}
 
 	/*
