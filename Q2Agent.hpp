@@ -11,7 +11,7 @@
 
 //smaller values (3-5) have worked the best; larger values produce oscillations. The effect of a smaller number of memorized locations
 //is to let only the most recent locations push the agent, hence pushing the opposite in a more orthogonal direct wrt the visited region's radius
-#define NUM_MEMORIZED_LOCATIONS 8
+#define NUM_MEMORIZED_LOCATIONS 10
 
 class kvector{
 	public:
@@ -43,7 +43,7 @@ q-value estimate for the last action, and then 3 other noisier estimates.
 
 Theoretically combining all the actions into a single network would solve this, since the looped-update
 will update all action values, not just one. The architecture is to add two inputs to the network
-for x and y velocity, and to have a single linear output. The "action" values are given solely by inputing
+for x and y velocity, and to have a single linear output. _recentLocationsThe "action" values are given solely by inputing
 different values for the x and y velocity inputs, which in this case are just 1 or 0 (exclusively).
 
 */

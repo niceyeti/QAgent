@@ -41,20 +41,20 @@ using namespace std;
 #define ALPHA_GOAL_REACHED 'g'
 #define ALPHA_REPETITION 't'
 #define ALPHA_COLLISION 'c'
-#define EXTERNAL_REWARD_GOAL 1
+#define EXTERNAL_REWARD_GOAL 2
 #define EXTERNAL_REWARD_VISITED -1
-#define EXTERNAL_REWARD_COLLISION -5
+#define EXTERNAL_REWARD_COLLISION -4
 
 //The actions. Each of which will have its own neural network
 #define NUM_ACTIONS 4
 //enum Action{ACTION_UP,ACTION_DOWN,ACTION_LEFT,ACTION_RIGHT,ACTION_SHOOT,ACTION_IDLE};
 enum Action{ACTION_UP, ACTION_DOWN, ACTION_LEFT, ACTION_RIGHT};
 //The agent's state-dimension, and the number of inputs to each q-net
-#define STATE_DIMENSION 3 //  velocity x-component, velocity y-component, x position, y position, etc in spec
+#define STATE_DIMENSION 4 //  velocity x-component, velocity y-component, x position, y position, etc in spec
 //enum StateAttribute{SA_XPOS, SA_YPOS, SA_XVELOCITY, SA_YVELOCITY, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
 //enum StateAttribute{SA_XVELOCITY, SA_YVELOCITY, SA_GOAL_COSINE, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
 //enum StateAttribute{SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
-enum StateAttribute{SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY};
+enum StateAttribute{SA_GOAL_COSINE, SA_IS_VISITED_LOCATION, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY};
 //!!!!! WARNING!!!! Change any of the above, and verify the entire group. Eg, don't add a state attribute and not STATE_DIMENSION too!!!!
 
 #define BATCH_SIZE 200
@@ -65,7 +65,7 @@ enum StateAttribute{SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROX
 //if this is too large, the agent can become too conservative, not finding narrow passages between/around objects,
 //in short, smaller sensitivity gives greater precision in the agent's ability to avoid objects. However,
 //a larger proximity range drastically reduces the agent's risk of collision.
-#define MAX_COLLISION_PROXIMITY_RANGE 7.0
+#define MAX_COLLISION_PROXIMITY_RANGE 4.0
 
 typedef struct missile{
 	double acceleration;

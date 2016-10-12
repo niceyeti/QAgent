@@ -221,6 +221,8 @@ TODO: Is this desirable over zero-mean? The only reason I'm keeping this around 
 */
 void Q2Agent::_normalizeStateVector(const World* world, vector<double>& state)
 {
+	//NOTE: NO NEED TO NORMALIZE state[SA_IS_VISITED_LOCATION] since it is discrete 0.0 or 1.0
+
 	//both cos-sim metrics just get shiftd down by one to give them range -2.0 (opposite some other point), to 0.0 (in direction of some point)
 	state[SA_GOAL_COSINE] = state[SA_GOAL_COSINE] - 1.0;
 	//the direction maximizing this cossim is if agent goes in the direction of its previous location. since this is
@@ -414,7 +416,7 @@ Current state attrbutes are defined in the .hpp: tyepdef enum StateAttribute{XPO
 void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& missiles)
 {
 	//tell the agent if it is headed in a good direction: vector-cosine gives a nice value in range [+1.0,-1.0]
-	double xHeading, yHeading, x_prime, y_prime;
+	double xHeading, yHeading, x_temp, y_temp, x_prime, y_prime;
 
 	//set all the action-unique state values (the state estimate, given the action) for current time _t
 	for(int action = 0; action < _stateHistory[_t].size(); action++){
@@ -440,6 +442,25 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 				cout << "ERROR action not found in _updateState()" << endl;
 				break;				
 		}
+		
+		//estimate of where the agent will be, given this action
+		x_prime = agent.x + xHeading;
+		y_prime = agent.y + yHeading;
+		
+		//check if this expected location is visited (invalid positions are treated as visited)
+		_stateHistory[_t][action][SA_IS_VISITED_LOCATION] = 0.0;
+		if(!world->IsValidPosition(x_prime, y_prime)){ //if expected position is invalid, mark it as visited; this is just an undefined edge-case
+			_stateHistory[_t][action][SA_IS_VISITED_LOCATION] = -1.0;
+		}
+		else{
+			//check if intended location is in the visited set
+			for(int i = 0; i < _recentLocations.size(); i++){
+				if(x_prime == _recentLocations[i].first && y_prime == _recentLocations[i].second){
+					_stateHistory[_t][action][SA_IS_VISITED_LOCATION] = -1.0;
+				}
+			}	
+		}
+		
 		//set the velocity values
 		//_stateHistory[_t][action][SA_XVELOCITY] = xHeading;
 		//_stateHistory[_t][action][SA_YVELOCITY] = yHeading;
@@ -452,27 +473,27 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 		//set the goal-cossim value for each action net
 		//IMPORTANT: If agent is on the goal, zero vector is passed to cossim, which is undefined. In this case,
 		//clamp cosine to 1.0 (positive/good) for learning consistency with the goal reward.
-		x_prime = world->GOAL_X - agent.x;
-		y_prime = world->GOAL_Y - agent.y;
-		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is directly on the goal
+		x_temp = world->GOAL_X - x_prime;
+		y_temp = world->GOAL_Y - y_prime;
+		if(x_temp == 0 && y_temp == 0){ //check to avert passing zero vector to cossim when agent is directly on the goal
 			_stateHistory[_t][action][SA_GOAL_COSINE] = 1.0;
 		}
 		else{
-			_stateHistory[_t][action][SA_GOAL_COSINE] = _cosSim(x_prime, y_prime, xHeading, yHeading);
+			_stateHistory[_t][action][SA_GOAL_COSINE] = _cosSim(x_temp, y_temp, xHeading, yHeading);
 		}
 
 		//determine if agent is headed in a direction where it has already been, in the last k steps
 		//TODO: try both EMA and centroid/avg
 		//x_prime = _locationEma.first - agent.x;
 		//y_prime = _locationEma.second - agent.y;
-		x_prime = _locationAvg.first - agent.x;
-		y_prime = _locationAvg.second - agent.y;
-		if(x_prime == 0 && y_prime == 0){ //check to avert passing zero vector to cossim when agent is at its previous location estimate
+		x_temp = _locationAvg.first - x_prime;
+		y_temp = _locationAvg.second - x_prime;
+		if(x_temp == 0 && y_temp == 0){ //check to avert passing zero vector to cossim when agent is at its previous location estimate
 			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = 1.0;
 		}
 		else{
 			//measures cos-sim between the heading vector and the vector pointing in the direction of some estimated of the previous location
-			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = _cosSim(x_prime, y_prime, xHeading, yHeading);
+			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = _cosSim(x_temp, y_temp, xHeading, yHeading);
 		}
 	}
 
@@ -683,14 +704,14 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 	double reward = 0.0;
 
 	if(world->GetCell(agent.x, agent.y).isGoal){
-		reward = 1.0;
+		reward += EXTERNAL_REWARD_GOAL;
 	}
 	else if(agent.sufferedCollision){
-		reward = -1.0;
+		reward += EXTERNAL_REWARD_COLLISION;
 	}
 	
 	if(world->GetCell(agent.x, agent.y).isTraversed){
-		reward -= 0.5;
+		reward += EXTERNAL_REWARD_VISITED;
 	}
 
 	if(reward != 0.0){
@@ -1562,7 +1583,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if(_totalEpisodes < 11000){
+	if(_totalEpisodes < 20000){
 		if(rand() % 5 == 4){
 			/*
 			if(rand() % 2 == 0)
