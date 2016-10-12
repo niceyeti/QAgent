@@ -221,7 +221,7 @@ TODO: Is this desirable over zero-mean? The only reason I'm keeping this around 
 */
 void Q2Agent::_normalizeStateVector(const World* world, vector<double>& state)
 {
-	//NOTE: NO NEED TO NORMALIZE state[SA_IS_VISITED_LOCATION] since it is discrete 0.0 or 1.0
+	//NOTE: NO NEED TO NORMALIZE state[SA_LOCATION_VISIT_COUNT] since it is discrete 0.0 or 1.0
 
 	//both cos-sim metrics just get shiftd down by one to give them range -2.0 (opposite some other point), to 0.0 (in direction of some point)
 	state[SA_GOAL_COSINE] = state[SA_GOAL_COSINE] - 1.0;
@@ -448,17 +448,20 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 		y_prime = agent.y + yHeading;
 		
 		//check if this expected location is visited (invalid positions are treated as visited)
-		_stateHistory[_t][action][SA_IS_VISITED_LOCATION] = 0.0;
+		_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = 0.0;
 		if(!world->IsValidPosition(x_prime, y_prime)){ //if expected position is invalid, mark it as visited; this is just an undefined edge-case
-			_stateHistory[_t][action][SA_IS_VISITED_LOCATION] = -1.0;
+			_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = -2.0;
 		}
-		else{
+		else if(world->GetCell(agent.x,agent.y).traversalCount > 0){
+			_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = max(-2.0, (double)world->GetCell(agent.x, agent.y).traversalCount / -10.0);
+			/* the old limited-knowledge version
 			//check if intended location is in the visited set
 			for(int i = 0; i < _recentLocations.size(); i++){
 				if(x_prime == _recentLocations[i].first && y_prime == _recentLocations[i].second){
-					_stateHistory[_t][action][SA_IS_VISITED_LOCATION] = -1.0;
+					_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = -2.0;
 				}
-			}	
+			}
+			*/
 		}
 		
 		//set the velocity values
@@ -710,8 +713,8 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 		reward += EXTERNAL_REWARD_COLLISION;
 	}
 	
-	if(world->GetCell(agent.x, agent.y).isTraversed){
-		reward += EXTERNAL_REWARD_VISITED;
+	if(world->GetCell(agent.x, agent.y).traversalCount > 0){
+		reward += (EXTERNAL_REWARD_VISITED * world->GetCell(agent.x, agent.y).traversalCount);
 	}
 
 	if(reward != 0.0){
@@ -739,9 +742,10 @@ double Q2Agent::_updateExternalReward(const World* world, const vector<Missile>&
 			_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_COLLISION));
 		}
 		//for this to be useful the agent needs previous-location estimate data in the xs (state), which it gets through the cosine-visited attribute
-		if(world->GetCell(agent.x, agent.y).isTraversed){
-			reward += EXTERNAL_REWARD_VISITED;
-			_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_REPETITION));
+		if(world->GetCell(agent.x, agent.y).traversalCount > 0){
+			reward += (EXTERNAL_REWARD_VISITED * world->GetCell(agent.x, agent.y).traversalCount);
+			//reward += EXTERNAL_REWARD_VISITED;
+			//_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_REPETITION));
 		}
 	}
 
@@ -797,7 +801,7 @@ double Q2Agent::_getCurrentRewardValue_Learnt(const World* world, const vector<M
 				value = EXTERNAL_REWARD_GOAL;
 				break;
 			case 't':
-				value = EXTERNAL_REWARD_VISITED;
+				//value = EXTERNAL_REWARD_VISITED;
 				value = 0;
 				break;
 			case 'c':
@@ -1537,6 +1541,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	_updateCurrentState(world, missiles);
 
 	_qNet.SetEta(0.05);
+	_qNet.SetMomentum(0.1);
 
 	//classify the new current-state across all action-nets 
 	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
@@ -1561,11 +1566,11 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
-	//if(reward != 0.0){
+	//if(reward != 0.0 && _totalEpisodes < 20000){
 			//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 			//backpropagate the error and update the network weights for the last action (only)
 			const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
-			_qNet.Classify(previousState); //the net must be re-clamped to:Class the previous state's signals
+			_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
 			prevEstimate = _qNet.GetOutputs()[0].Output;
 			cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
 			_qNet.BackpropagateError(previousState, qTarget);

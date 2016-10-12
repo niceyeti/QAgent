@@ -42,8 +42,8 @@ using namespace std;
 #define ALPHA_REPETITION 't'
 #define ALPHA_COLLISION 'c'
 #define EXTERNAL_REWARD_GOAL 2
-#define EXTERNAL_REWARD_VISITED -1
-#define EXTERNAL_REWARD_COLLISION -4
+#define EXTERNAL_REWARD_VISITED -0.1
+#define EXTERNAL_REWARD_COLLISION -2
 
 //The actions. Each of which will have its own neural network
 #define NUM_ACTIONS 4
@@ -54,7 +54,7 @@ enum Action{ACTION_UP, ACTION_DOWN, ACTION_LEFT, ACTION_RIGHT};
 //enum StateAttribute{SA_XPOS, SA_YPOS, SA_XVELOCITY, SA_YVELOCITY, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
 //enum StateAttribute{SA_XVELOCITY, SA_YVELOCITY, SA_GOAL_COSINE, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
 //enum StateAttribute{SA_GOAL_COSINE, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY, SA_GOAL_DIST};
-enum StateAttribute{SA_GOAL_COSINE, SA_IS_VISITED_LOCATION, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY};
+enum StateAttribute{SA_GOAL_COSINE, SA_LOCATION_VISIT_COUNT, SA_RECENT_LOCATION_COSINE, SA_COLLISION_PROXIMITY};
 //!!!!! WARNING!!!! Change any of the above, and verify the entire group. Eg, don't add a state attribute and not STATE_DIMENSION too!!!!
 
 #define BATCH_SIZE 200
@@ -78,8 +78,8 @@ typedef struct missile{
 //Trivial data type describing a particular grid location
 typedef struct worldCell{
 	bool isObstacle;
-	bool isTraversed;
 	bool isGoal;
+	int traversalCount;
 }WorldCell;
 
 typedef struct agent{

@@ -78,8 +78,8 @@ void World::InitializeWorld(vector<Missile>& missiles, Agent& agent, int numObst
 	for(i = 0; i < _world.size(); i++){
 		for(j = 0; j < _world[i].size(); j++){
 			_world[i][j].isObstacle = false;
-			_world[i][j].isTraversed = false;
 			_world[i][j].isGoal = false;
+			_world[i][j].traversalCount = 0;
 		}
 	}
 
@@ -163,7 +163,7 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 	}
 	else{
 		//this is deliberately set *before* the agent moves, otherwise the agent always perceives it already visited its new location
-		GetCell(qagent->agent.x, qagent->agent.y).isTraversed = true;
+		GetCell(qagent->agent.x, qagent->agent.y).traversalCount++;
 
 		newX = qagent->agent.x + qagent->agent.xVelocity * timeStep;	
 		newY = qagent->agent.y + qagent->agent.yVelocity * timeStep;
@@ -257,14 +257,14 @@ void World::_setRandomAgentStartLocation(Agent& agent)
 	agent.y = rand() % (_maxY / 6);
 }
 
-//On teleportation back to start, all isTraversed flags are reset.
+//On teleportation back to start, all traversalCounts are reset to zero.
 void World::_resetTraversalFlags()
 {
 	int i, j;
 
 	for(i = 0; i < _world.size(); i++){
 		for(j = 0; j < _world[i].size(); j++){
-			_world[i][j].isTraversed = false;
+			_world[i][j].traversalCount = 0;
 		}
 	}
 }
@@ -314,7 +314,7 @@ void World::Draw(vector<Missile>& missiles, Agent& agent)
 	//overlay the agent's path
 	for(i = 0; i < _world.size(); i++){
 		for(j = 0; j < _world[i].size(); j++){
-			if(_world[i][j].isTraversed){
+			if(_world[i][j].traversalCount > 0){
 				_worldString[ i * lineWidth + j ] = '-';
 			}
 		}
