@@ -53,7 +53,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	GoalResetThreshold = 1;
 
 	//set _eta value, the q-learning learning rate
-	_eta = 0.1;
+	_eta = 0.05;
 	_gamma = 0.9;
 	GoalResetThreshold = 1;
 	_t = 0; //time series index
@@ -452,8 +452,8 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 		if(!world->IsValidPosition(x_prime, y_prime)){ //if expected position is invalid, mark it as visited; this is just an undefined edge-case
 			_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = -2.0;
 		}
-		else if(world->GetCell(agent.x,agent.y).traversalCount > 0){
-			_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = max(-2.0, (double)world->GetCell(agent.x, agent.y).traversalCount / -10.0);
+		else if(world->GetCell(x_prime, y_prime).traversalCount > 0){
+			_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = max(-2.0, (double)world->GetCell(x_prime, y_prime).traversalCount / -10.0);
 			/* the old limited-knowledge version
 			//check if intended location is in the visited set
 			for(int i = 0; i < _recentLocations.size(); i++){

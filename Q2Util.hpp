@@ -43,7 +43,7 @@ using namespace std;
 #define ALPHA_COLLISION 'c'
 #define EXTERNAL_REWARD_GOAL 2
 #define EXTERNAL_REWARD_VISITED -0.1
-#define EXTERNAL_REWARD_COLLISION -2
+#define EXTERNAL_REWARD_COLLISION -3
 
 //The actions. Each of which will have its own neural network
 #define NUM_ACTIONS 4
