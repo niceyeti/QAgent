@@ -1540,7 +1540,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//Update agent's current state and state history for all possible actions
 	_updateCurrentState(world, missiles);
 
-	_qNet.SetEta(0.05);
+	_qNet.SetEta(0.01);
 	_qNet.SetMomentum(0.1);
 
 	//classify the new current-state across all action-nets 
@@ -1614,6 +1614,103 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 		//_qNet.PrintWeights();
 	//}
 }
+
+/*
+Virtually the same as classical q-learning, however instead of maxQ{a in Action}(Q(s',a)),
+this sums over all of the q-values in the successor state. Theoretically this should give a milder,
+more conservative, possibly more convergent agent. This may be the same as advantage learning. I don't
+know if it is. It just seemed like a simply modification to basic q-learning to try.
+
+This works just fine. Possibly better than Classical-Update. This means there are probably many different ways to
+1) Play with the basic q-value recursion for better performance
+2) Define the recursion to select actions optimizing different expected values per action (eg, using risk analysis)
+*/
+void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missiles)
+{
+	int action;
+	double maxQ, sumQ, qTarget, prevEstimate;
+	Action optimalAction = ACTION_UP;
+
+	//Update agent's current state and state history for all possible actions
+	_updateCurrentState(world, missiles);
+
+	_qNet.SetEta(0.01);
+	_qNet.SetMomentum(0.1);
+
+	//classify the new current-state across all action-nets 
+	for(action = 0, sumQ = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
+		//classify the state we just entered, given the previous action
+		_qNet.Classify(_getCurrentState((Action)action));
+		//cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
+		_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
+		sumQ += _qNet.GetOutputs()[0].Output;
+		//track the max action available in current state
+		if(_qNet.GetOutputs()[0].Output > maxQ){
+			maxQ = _qNet.GetOutputs()[0].Output;
+			optimalAction = (Action)action;
+		}
+	}
+	
+	//get the target q factor from the experienced reward given the last action
+	//qTarget = _getCurrentRewardValue_Manual(world, missiles) + _gamma * maxQ;
+	//double reward = _getCurrentRewardValue_Learnt(world, missiles);
+	double reward = _getCurrentRewardValue_Terminal(world, missiles);
+	//cout << "reward: " << reward << endl;
+	//qTarget = reward + _gamma * maxQ;
+	qTarget = reward + _gamma * (sumQ / (double)NUM_ACTIONS);
+	//cout << "QTARGET: " << qTarget << endl;
+	_epochReward += qTarget;
+	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
+
+	//if(reward != 0.0 && _totalEpisodes < 20000){
+			//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+			//backpropagate the error and update the network weights for the last action (only)
+			const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+			_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+			prevEstimate = _qNet.GetOutputs()[0].Output;
+			cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
+			_qNet.BackpropagateError(previousState, qTarget);
+			_qNet.UpdateWeights(previousState, qTarget);
+			//cout << "44" << endl;
+		if(_episodeCount > 100){
+			//record this example; this is useful for both replay-based learning and for data analysis
+			_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+		}
+	//}
+
+	//take the action with the highest q-value
+	//LastAction = CurrentAction;
+	CurrentAction = optimalAction;
+
+	//randomize the action n% of the time
+	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
+	if(_totalEpisodes < 20000){
+		if(rand() % 5 == 4){
+			/*
+			if(rand() % 2 == 0)
+				CurrentAction = _getStochasticOptimalAction();
+			else
+				CurrentAction = (Action)(rand() % NUM_ACTIONS);
+			*/
+			CurrentAction = (Action)(rand() % NUM_ACTIONS);
+		}
+	}
+
+	//map the action into outputs
+	_takeAction(CurrentAction);
+
+	//some metalogic stuff: random restarts and force agent to move if in same place too long
+	//TODO: this member represents bad coupling
+	agent.sufferedCollision = false;
+	_episodeCount++;
+	_totalEpisodes++;
+
+	//testing: print the neural net weights
+	//if(_episodeCount % 100 == 1){
+		//_qNet.PrintWeights();
+	//}
+}
+
 
 
 //gets the ordinal distance between two doubles

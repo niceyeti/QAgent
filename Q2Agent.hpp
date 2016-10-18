@@ -141,7 +141,8 @@ class Q2Agent{
 		void ResetEpoch(double terminalValue);
 		void PrintCurrentStateEstimates();
 		const char* GetActionStr(int i);
-		void LoopedUpdate(const World* world, const vector<Missile>& missiles);	
+		void LoopedUpdate(const World* world, const vector<Missile>& missiles);
+		void AdvantageUpdate(const World* world, const vector<Missile>& missiles);
 		//void DiscriminativeUpdate(const World* world, const vector<Missile>& missiles);
 		//void MinibatchUpdate(const World* world, const vector<Missile>& missiles);
 		//void OfflineUpdate(const World* world, const vector<Missile>& missiles);

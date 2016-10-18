@@ -33,7 +33,8 @@ int main(int argc, char** argv, char** env)
 		//q2Agent.LogisticRewardApproximationUpdate(&world,missiles);
 		//q2Agent.Update(&world,missiles);
 		//q2Agent.LoopedUpdate(&world,missiles);
-		q2Agent.ClassicalUpdate(&world,missiles);
+		//q2Agent.ClassicalUpdate(&world,missiles);
+		q2Agent.AdvantageUpdate(&world,missiles);
 
 		//Update and draw the world; this is just updating a model and displaying a view
 		world.Update(missiles, &q2Agent, 1.0);
