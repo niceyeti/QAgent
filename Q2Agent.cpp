@@ -1581,7 +1581,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	_qNet.SetEta(0.01);
+	_qNet.SetEta(0.05);
 	_qNet.SetMomentum(0.1);
 	_gamma = 0.9;
 
@@ -1609,7 +1609,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
 	//if(reward != 0.0 && _totalEpisodes < 20000){
-	//if(_totalEpisodes < 10000){
+	if(_totalEpisodes < 10000){
 			//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 			//backpropagate the error and update the network weights for the last action (only)
 			const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
@@ -1623,7 +1623,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 			//record this example; this is useful for both replay-based learning and for data analysis
 			_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 		}
-	//}
+	}
 
 	//take the action with the highest q-value
 	//LastAction = CurrentAction;
@@ -1642,12 +1642,12 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 			CurrentAction = (Action)(rand() % NUM_ACTIONS);
 		}
 	}
-	/*
 	else{
 		//An alternative, more-complex action-policy compared to basic e-greedy policies
+		//Results: This works nicely (0% collision rate), usually only in compliment with shutting off
+		//backpropagation at the same epoch/episode when e-greedy is shut off.
 		CurrentAction = _searchForOptimalAction(world, missiles);
 	}
-	*/
 
 	//map the action into outputs
 	_takeAction(CurrentAction);
@@ -1691,7 +1691,7 @@ Action Q2Agent::_searchForOptimalAction(const World* world, const vector<Missile
 	double xHeading, yHeading, destX, destY;
 	double maxQ = -1000000;
 	Action maxAction = ACTION_DOWN;
-	const int HORIZON = 3; //the k parameter, allowing the agent to simulate its actions for up to k-steps
+	const int HORIZON = 5; //the k parameter, allowing the agent to simulate its actions for up to k-steps
 	vector<double> tempState;
 	
 	tempState.resize(STATE_DIMENSION,0);
@@ -2423,6 +2423,6 @@ void Q2Agent::PrintState()
 		}
 	}
 	//print the epoch measures; ideally all should decrease with training, and avg reward should increase
-	cout << "Last epoch performance:  collision rate: " << ((double)((int)(_lastEpochCollisionRate * 1000)) / 100) << "%  #actions: " << _lastEpochActionCount;
+	cout << "Last epoch (" << _epochCount << "epoch/" << _totalEpisodes << "episodes) performance:  collision rate: " << ((double)((int)(_lastEpochCollisionRate * 1000)) / 100) << "%  #actions: " << _lastEpochActionCount;
 	cout << endl;
 }
