@@ -34,6 +34,7 @@ int main(int argc, char** argv, char** env)
 		//q2Agent.Update(&world,missiles);
 		//q2Agent.LoopedUpdate(&world,missiles);
 		//q2Agent.ClassicalUpdate(&world,missiles);
+		//q2Agent.AverageUpdate(&world,missiles);
 		q2Agent.AdvantageUpdate(&world,missiles);
 
 		//Update and draw the world; this is just updating a model and displaying a view
@@ -42,7 +43,7 @@ int main(int argc, char** argv, char** env)
 		if(t > 18000){
 			world.Draw(missiles, q2Agent.agent);
 			q2Agent.PrintState();
-			usleep(10000);
+			usleep(5000);
 		}
 		t++;
 	}

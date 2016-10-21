@@ -142,6 +142,7 @@ class Q2Agent{
 		void PrintCurrentStateEstimates();
 		const char* GetActionStr(int i);
 		void LoopedUpdate(const World* world, const vector<Missile>& missiles);
+		void AverageUpdate(const World* world, const vector<Missile>& missiles);
 		void AdvantageUpdate(const World* world, const vector<Missile>& missiles);
 		//void DiscriminativeUpdate(const World* world, const vector<Missile>& missiles);
 		//void MinibatchUpdate(const World* world, const vector<Missile>& missiles);
