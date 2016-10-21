@@ -1623,6 +1623,13 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 
 /*
 THIS IS JUST EXPERIMENTAL. I have no idea if this is a correct Baird-Advantage-Update interpretation.
+
+This works, but it isn't clear why. I hesitate to trust this hasty implementation, since the error
+is backpropagated wrt to the max action-state pair in the previous state, which may or may not represent
+the action-state pair that brought us to the successor state. In most cases, they will be the same, since
+we usually choose the max-value action in each state; but for epsilon-percent of the time, we don't, hence
+the update is wrt action-state pair that wasn't executed. It seems like this only works because the majority
+of the time the update is not inconsistent wrt the previous state-action pair.
 */
 void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missiles)
 {
