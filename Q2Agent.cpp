@@ -1644,7 +1644,7 @@ void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missile
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	_qNet.SetEta(0.01);
+	_qNet.SetEta(0.04);
 	_qNet.SetMomentum(0.1);
 	_gamma = 0.9;
 
