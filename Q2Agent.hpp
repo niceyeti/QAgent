@@ -95,15 +95,16 @@ class Q2Agent{
 		double _dist(double x1, double y1, double x2, double y2);
 		double _getStrikeLikelihood(const vector<Missile>& missiles);
 		double _getMissileLikelihood(const vector<Missile>& missiles);
-		double _nearestObstacleDist(const World* world);
-		double _nearestObjectOnHeading(double headingX, double headingY, const World* world, const vector<Missile>& missiles);
+		//double _nearestObstacleDist(const World* world);
+		double _nearestObjectOnHeading(double headingX, double headingY, double posX, double posY, const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Learnt(const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Manual1(const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Manual2(const World* world, const vector<Missile>& missiles);
 		double _getCurrentRewardValue_Terminal(const World* world, const vector<Missile>& missiles);
-		void _updateCurrentState(const World* world, const vector<Missile>& missiles);
+		void _updateCurrentActionStates(const World* world, const vector<Missile>& missiles);
 		double _updateExternalReward(const World* world, const vector<Missile>& missiles);
 		void _updateLocationMemory();
+		void _estimateSubsequentState(double xHeading, double yHeading, double destX, double destY, const World* world, const vector<Missile>& missiles, vector<double>& subsequentState);
 		
 		//experimental logging
 		void _flushRewardVectors();
@@ -113,6 +114,7 @@ class Q2Agent{
 		void _recordExample(const vector<double>& state, double qTarget, double qEstimate, Action action);
 
 		Action _getStochasticOptimalAction();
+		Action _searchForOptimalAction(const World* world, const vector<Missile>& missiles);
 		Action _selectionMethod1();
 		Action _selectionMethod2();
 		double _absDiff(double d1, double d2);
@@ -120,7 +122,7 @@ class Q2Agent{
 		void _zeroMeanStateVector(const World* world, vector<double>& state);
 		void _normalizeVector(vector<double>& vec);
 		void _takeContinuousAction();
-		void _deriveCurrentState(const World* world, const vector<Missile>& missiles);
+		void _deriveActionStates(const World* world, const vector<Missile>& missiles, vector<vector<double>>& actionStates);
 		const vector<double>& _getPreviousState(Action action);
 		const vector<double>& _getCurrentState(Action action);
 		bool _isWallCollision(const World* world);

@@ -174,26 +174,23 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 			//qagent->StoreTerminalState(-1.0); //ugly hack: store terminal state w/out resetting the agent
 			//_restartAgent(qagent,-1.0);
 		}
-		//else{
-
-		//the following checks prevent the agent from moving out of bounds or through obstacles
-		if(newX > _maxX){
-			newX = _maxX;
-		}
-		else if(newX < 0){
-			newX = 0;
-		}
-		if(newY > _maxY){
-			newY = _maxY;
-		}
-		else if(newY < 0){
-			newY = 0;
-		}
-		if(!GetCell(newX, newY).isObstacle){
+		else{
+			//the following checks prevent the agent from moving out of bounds or through obstacles
+			if(newX > _maxX){
+				newX = _maxX;
+			}
+			else if(newX < 0){
+				newX = 0;
+			}
+			if(newY > _maxY){
+				newY = _maxY;
+			}
+			else if(newY < 0){
+				newY = 0;
+			}
 			qagent->agent.x = (double)newX;
 			qagent->agent.y = (double)newY;
 		}
-		//}
 	}
 
 	//if(IsValidPosition(agent.x, agent.y)){

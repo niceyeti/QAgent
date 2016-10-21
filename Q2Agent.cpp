@@ -140,15 +140,15 @@ Q2Agent::~Q2Agent()
 //returns the t-1th state for the given action
 const vector<double>& Q2Agent::_getPreviousState(Action action)
 {
-	if(_t == 0)
+	if(_t == 0){
 		return _stateHistory[ _stateHistory.size() - 1 ][(int)action];
-
+	}
 	return _stateHistory[_t-1][(int)action];
 }
 
 const vector<double>& Q2Agent::_getCurrentState(Action action)
 {
-	return _stateHistory[ _t ][(int)action];
+	return _stateHistory[_t][(int)action];
 }
 
 /*
@@ -176,11 +176,11 @@ void Q2Agent::_updateLocationMemory()
 			_locationAvg.second += _recentLocations[i].second;
 		}
 	}
-	_locationAvg.first /= ((double)_recentLocations.size() - 1.0);
+	_locationAvg.first /= ((double)_recentLocations.size() - 1.0); //minus one since the current location is excluded
 	_locationAvg.second /= ((double)_recentLocations.size() - 1.0);
 }
 
-void Q2Agent::_updateCurrentState(const World* world, const vector<Missile>& missiles)
+void Q2Agent::_updateCurrentActionStates(const World* world, const vector<Missile>& missiles)
 {
 	//update the time step; this is just an index for _stateHistory for now
 	_t = (_t + 1) % (int)_stateHistory.size();
@@ -189,7 +189,7 @@ void Q2Agent::_updateCurrentState(const World* world, const vector<Missile>& mis
 	_updateLocationMemory();
 	
 	//derive current state estimate, per each possible action
-	_deriveCurrentState(world, missiles);
+	_deriveActionStates(world, missiles, _stateHistory[_t]);
 
 	//experimental: normalize the state vector such that the neural net inputs are effectively zero-mean
 	for(int action = 0; action < _stateHistory[_t].size(); action++){
@@ -413,13 +413,13 @@ The definition of the state vector is an incredibly important part of this syste
 
 Current state attrbutes are defined in the .hpp: tyepdef enum StateAttribute{XPOS, YPOS, XVELOCITY, YVELOCITY, OBSTACLE_DIST, MISSILE_LIKELIHOOD, STRIKE_LIKELIHOOD};
 */
-void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& missiles)
+void Q2Agent::_deriveActionStates(const World* world, const vector<Missile>& missiles, vector<vector<double>>& actionStates)
 {
 	//tell the agent if it is headed in a good direction: vector-cosine gives a nice value in range [+1.0,-1.0]
-	double xHeading, yHeading, x_temp, y_temp, x_prime, y_prime;
+	double xHeading, yHeading, destX, destY;
 
 	//set all the action-unique state values (the state estimate, given the action) for current time _t
-	for(int action = 0; action < _stateHistory[_t].size(); action++){
+	for(int action = 0; action < actionStates.size(); action++){
 		//get the velocity/heading state-specific values
 		switch(action){
 			case ACTION_UP:
@@ -444,60 +444,16 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 		}
 		
 		//estimate of where the agent will be, given this action
-		x_prime = agent.x + xHeading;
-		y_prime = agent.y + yHeading;
-		
-		//check if this expected location is visited (invalid positions are treated as visited)
-		_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = 0.0;
-		if(!world->IsValidPosition(x_prime, y_prime)){ //if expected position is invalid, mark it as visited; this is just an undefined edge-case
-			_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = -2.0;
-		}
-		else if(world->GetCell(x_prime, y_prime).traversalCount > 0){
-			_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = max(-2.0, (double)world->GetCell(x_prime, y_prime).traversalCount / -10.0);
-			/* the old limited-knowledge version
-			//check if intended location is in the visited set
-			for(int i = 0; i < _recentLocations.size(); i++){
-				if(x_prime == _recentLocations[i].first && y_prime == _recentLocations[i].second){
-					_stateHistory[_t][action][SA_LOCATION_VISIT_COUNT] = -2.0;
-				}
-			}
-			*/
-		}
-		
-		//set the velocity values
-		//_stateHistory[_t][action][SA_XVELOCITY] = xHeading;
-		//_stateHistory[_t][action][SA_YVELOCITY] = yHeading;
-		//set distance per the position delta if this action is taken
-		//_stateHistory[_t][action][SA_GOAL_DIST] = _dist(world->GOAL_X, world->GOAL_Y, agent.x + xHeading, agent.y + yHeading);
-
-		//set the distance to nearest object state attribute per the heading given by each ACTION
-		_stateHistory[_t][action][SA_COLLISION_PROXIMITY] = _nearestObjectOnHeading(xHeading, yHeading, world, missiles);
-
-		//set the goal-cossim value for each action net
-		//IMPORTANT: If agent is on the goal, zero vector is passed to cossim, which is undefined. In this case,
-		//clamp cosine to 1.0 (positive/good) for learning consistency with the goal reward.
-		x_temp = world->GOAL_X - x_prime;
-		y_temp = world->GOAL_Y - y_prime;
-		if(x_temp == 0 && y_temp == 0){ //check to avert passing zero vector to cossim when agent is directly on the goal
-			_stateHistory[_t][action][SA_GOAL_COSINE] = 1.0;
-		}
-		else{
-			_stateHistory[_t][action][SA_GOAL_COSINE] = _cosSim(x_temp, y_temp, xHeading, yHeading);
+		destX = agent.x + xHeading;
+		destY = agent.y + yHeading;
+		//only allow checkin valid positions; not those located w/in an obstacle or off-grid
+		if(!world->IsValidPosition(destX, destY) || world->GetCell(destX, destY).isObstacle){
+			destX = agent.x;
+			destY = agent.y;
 		}
 
-		//determine if agent is headed in a direction where it has already been, in the last k steps
-		//TODO: try both EMA and centroid/avg
-		//x_prime = _locationEma.first - agent.x;
-		//y_prime = _locationEma.second - agent.y;
-		x_temp = _locationAvg.first - x_prime;
-		y_temp = _locationAvg.second - x_prime;
-		if(x_temp == 0 && y_temp == 0){ //check to avert passing zero vector to cossim when agent is at its previous location estimate
-			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = 1.0;
-		}
-		else{
-			//measures cos-sim between the heading vector and the vector pointing in the direction of some estimated of the previous location
-			_stateHistory[_t][action][SA_RECENT_LOCATION_COSINE] = _cosSim(x_temp, y_temp, xHeading, yHeading);
-		}
+		//given the info derived from estimating the result of this action (heading, dest location, etc), estimate the state values once we're there
+		_estimateSubsequentState(xHeading, yHeading, destX, destY, world, missiles, actionStates[action]);
 	}
 
 	//set the distance to the nearest obstacle, given current direction	REMOVED TO _udateState()
@@ -517,8 +473,69 @@ void Q2Agent::_deriveCurrentState(const World* world, const vector<Missile>& mis
 }
 
 /*
-Find's nearest object on given heading, within a radar cone of 45*. If in IDLE, distance is infinite/max.
+The state-vector estimator, given all the info about where the agent thinks it will be, given some action, and given
+the external environment (world, missiles).
+*/
+void Q2Agent::_estimateSubsequentState(double xHeading, double yHeading, double destX, double destY, const World* world, const vector<Missile>& missiles, vector<double>& subsequentState)
+{
+	double x_temp, y_temp;
 
+	//check if this expected location is visited (invalid positions are treated as visited)
+	subsequentState[SA_LOCATION_VISIT_COUNT] = 0.0;
+	if(!world->IsValidPosition((int)destX, (int)destY)){ //if expected position is invalid, mark it as visited; this is just an undefined edge-case
+		subsequentState[SA_LOCATION_VISIT_COUNT] = -2.0;
+	}
+	else if(world->GetCell((int)destX, (int)destY).traversalCount > 0){
+		//estimate up to 20 retraversals
+		subsequentState[SA_LOCATION_VISIT_COUNT] = max(-2.0, (double)world->GetCell((int)destX, (int)destY).traversalCount / -10.0);
+		/* the old limited-knowledge version
+		//check if intended location is in the visited set
+		for(int i = 0; i < _recentLocations.size(); i++){
+			if(destX == _recentLocations[i].first && destY == _recentLocations[i].second){
+				subsequentState[SA_LOCATION_VISIT_COUNT] = -2.0;
+			}
+		}
+		*/
+	}
+	
+	//set the velocity values
+	//subsequentState[SA_XVELOCITY] = xHeading;
+	//subsequentState[SA_YVELOCITY] = yHeading;
+	//set distance per the position delta if this action is taken
+	//subsequentState[SA_GOAL_DIST] = _dist(world->GOAL_X, world->GOAL_Y, agent.x + xHeading, agent.y + yHeading);
+
+	//set the distance to nearest object state attribute per the heading given by each ACTION
+	subsequentState[SA_COLLISION_PROXIMITY] = _nearestObjectOnHeading(xHeading, yHeading, destX, destY, world, missiles);
+
+	//set the goal-cossim value for each action net
+	//IMPORTANT: If agent is on the goal, zero vector is passed to cossim, which is undefined. In this case,
+	//clamp cosine to 1.0 (positive/good) for learning consistency with the goal reward.
+	x_temp = world->GOAL_X - destX;
+	y_temp = world->GOAL_Y - destY;
+	if(x_temp == 0 && y_temp == 0){ //check to avert passing zero vector to cossim when agent is directly on the goal
+		subsequentState[SA_GOAL_COSINE] = 1.0;
+	}
+	else{
+		subsequentState[SA_GOAL_COSINE] = _cosSim(x_temp, y_temp, xHeading, yHeading);
+	}
+
+	//determine if agent is headed in a direction where it has already been, in the last k steps
+	//TODO: try both EMA and centroid/avg
+	//destX = _locationEma.first - agent.x;
+	//destY = _locationEma.second - agent.y;
+	x_temp = _locationAvg.first  - destX;
+	y_temp = _locationAvg.second - destY;
+	if(x_temp == 0 && y_temp == 0){ //check to avert passing zero vector to cossim when agent is at its previous location estimate
+		subsequentState[SA_RECENT_LOCATION_COSINE] = 1.0;
+	}
+	else{
+		//measures cos-sim between the heading vector and the vector pointing in the direction of some estimated of the previous location
+		subsequentState[SA_RECENT_LOCATION_COSINE] = _cosSim(x_temp, y_temp, xHeading, yHeading);
+	}
+}
+
+
+/*
 The solution here is just for the agent to simulate its current velocity for several time steps to estimate
 all the locations it will need to traverse.
 
@@ -527,25 +544,32 @@ is in some range.
 
 @headingX: x component of some heading
 @headingY: y component of some heading
+@baseX: Base x-position for comparison. <<< BE SAVVY WITH THESE. DO YOU WANT BASE=Agent.current-position or BASE=agent.hypothetical-position?
+@baseY: Base y-position for comparison
 Rest are self-explanatory. Distances are relative to agent's current position.
 */
-double Q2Agent::_nearestObjectOnHeading(double headingX, double headingY, const World* world, const vector<Missile>& missiles)
+double Q2Agent::_nearestObjectOnHeading(double headingX, double headingY, double baseX, double baseY, const World* world, const vector<Missile>& missiles)
 {
-	int x_t, y_t;
+	bool collision;
+	int x_t, y_t, t;
+	double dist = MAX_COLLISION_PROXIMITY_RANGE;
 
 	//simulate next t time steps at current velocities/heading
-	for(int t = 0; t < 15; t++){
-		x_t = (int)(headingX * (double)t + agent.x);
-		y_t = (int)(headingY * (double)t + agent.y);
+	for(t = 0, collision = false; t < 15; t++){
+		x_t = (int)(baseX + headingX * (double)t);
+		y_t = (int)(baseY + headingY * (double)t);
 		//check if position is either an obstacle of off-map, which is the same as an impenetrable obstacle
 		if(!world->IsValidPosition(x_t, y_t) || world->GetCell(x_t, y_t).isObstacle){
-			double dist = _dist(agent.x, agent.y, (double)x_t, (double)y_t) - 1.0; //minus one, since collisions occur for adjacent cells, not when the agent is co-located with some obstacle
+			dist = _dist(baseX, baseY, (double)x_t, (double)y_t) - 1.0; //minus one, since collisions occur for adjacent cells, not when the agent is co-located with some obstacle
 			//return the min of the dist or max sensitivity range
-			return dist <= MAX_COLLISION_PROXIMITY_RANGE ? dist : MAX_COLLISION_PROXIMITY_RANGE;
+			if(dist > MAX_COLLISION_PROXIMITY_RANGE){
+				dist = MAX_COLLISION_PROXIMITY_RANGE;
+			}
+			collision = true; //exit loop for first obstacle/out-of-bounds found since its the min dist
 		}
 	}
 
-	return MAX_COLLISION_PROXIMITY_RANGE;
+	return dist;
 }
 
 double Q2Agent::_dist(double x1, double y1, double x2, double y2)
@@ -642,7 +666,7 @@ double Q2Agent::_getMissileLikelihood(const vector<Missile>& missiles)
 }
 
 
-//A flat distance to nearest object, w/out respect to direction, just gives preference
+/*A flat distance to nearest object, w/out respect to direction, just gives preference
 //for the agent to stay away from obstacles.
 double Q2Agent::_nearestObstacleDist(const World* world)
 {
@@ -662,6 +686,7 @@ double Q2Agent::_nearestObstacleDist(const World* world)
 
 	return dist;
 }
+*/
 
 //copies a vector to another; user beware on size checking
 void Q2Agent::_copyVec(vector<double>& v1, vector<double>& v2)
@@ -714,7 +739,13 @@ double Q2Agent::_getCurrentRewardValue_Terminal(const World* world, const vector
 	}
 	
 	if(world->GetCell(agent.x, agent.y).traversalCount > 0){
-		reward += (EXTERNAL_REWARD_VISITED * world->GetCell(agent.x, agent.y).traversalCount);
+		//bound negative re-visit rewards by 20 revisits
+		if(world->GetCell(agent.x, agent.y).traversalCount >= 20){
+			reward += (EXTERNAL_REWARD_VISITED * 20);
+		}
+		else{
+			reward += (EXTERNAL_REWARD_VISITED * (double)world->GetCell(agent.x, agent.y).traversalCount);
+		}
 	}
 
 	if(reward != 0.0){
@@ -743,7 +774,12 @@ double Q2Agent::_updateExternalReward(const World* world, const vector<Missile>&
 		}
 		//for this to be useful the agent needs previous-location estimate data in the xs (state), which it gets through the cosine-visited attribute
 		if(world->GetCell(agent.x, agent.y).traversalCount > 0){
-			reward += (EXTERNAL_REWARD_VISITED * world->GetCell(agent.x, agent.y).traversalCount);
+			if(world->GetCell(agent.x, agent.y).traversalCount >= 20){
+				reward += (EXTERNAL_REWARD_VISITED * 20);
+			}
+			else{
+				reward += (EXTERNAL_REWARD_VISITED * world->GetCell(agent.x, agent.y).traversalCount);
+			}
 			//reward += EXTERNAL_REWARD_VISITED;
 			//_kVectors.push_back(kvector(_getCurrentState((Action)CurrentAction), reward, ALPHA_REPETITION));
 		}
@@ -1133,7 +1169,7 @@ void Q2Agent::LoopedUpdate(const World* world, const vector<Missile>& missiles)
 	Action lastOptimalAction = ACTION_DOWN, optimalAction = ACTION_LEFT, tempMaxAction = ACTION_RIGHT;
 
 	//Update agent's current state and state history
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	//get the target q factor from the experienced reward given the last action
 	//reward = _getCurrentRewardValue_Manual(world, missiles);
@@ -1231,11 +1267,11 @@ void Q2Agent::_tokenize(const string &s, char delim, vector<string> &tokens)
 void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile>& missiles)
 {
 	int action = 0;
-	double maxQ = 0, qTarget = 0, reward = 0, rewardTarget = 0, rewardEstimate = 0, prevEstimate = 0;
+	double maxQ = 0, qTarget = 0, rewardTarget = 0, rewardEstimate = 0, prevEstimate = 0;
 	Action optimalAction = ACTION_UP;
 
 	//Update agent's current state and state history for all possible actions
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	//Update external rewards (agent ran into wall, reached goal, etc)
 	rewardTarget = _updateExternalReward(world,missiles);
@@ -1435,7 +1471,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	Action optimalAction = ACTION_UP;
 
 	//Update agent's current state and state history for all possible actions
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	//Update external rewards (agent ran into wall, reached goal, etc)
 	_updateExternalReward(world,missiles);
@@ -1540,7 +1576,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	Action optimalAction = ACTION_UP;
 
 	//Update agent's current state and state history for all possible actions
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
@@ -1573,6 +1609,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
 	//if(reward != 0.0 && _totalEpisodes < 20000){
+	//if(_totalEpisodes < 10000){
 			//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 			//backpropagate the error and update the network weights for the last action (only)
 			const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
@@ -1594,17 +1631,23 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if(_totalEpisodes < 5000){
+	if(_totalEpisodes < 10000){
 		if(rand() % 5 == 4){
 			/*
 			if(rand() % 2 == 0)
 				CurrentAction = _getStochasticOptimalAction();
 			else
 				CurrentAction = (Action)(rand() % NUM_ACTIONS);
-			*/
+			*/	
 			CurrentAction = (Action)(rand() % NUM_ACTIONS);
 		}
 	}
+	/*
+	else{
+		//An alternative, more-complex action-policy compared to basic e-greedy policies
+		CurrentAction = _searchForOptimalAction(world, missiles);
+	}
+	*/
 
 	//map the action into outputs
 	_takeAction(CurrentAction);
@@ -1620,6 +1663,92 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 		//_qNet.PrintWeights();
 	//}
 }
+
+/*
+An alternative to basic e-greedy action policies. Excluding other details or information that
+inform the choice of policy, this policy structure allows the agent to prognosticate a little bit
+about the values of actions within its local space. For instance, the immediate value may not simply
+be the estimated state-value resulting from going right, but rather the agent may check for several
+state values ahead of taking the 'right' action, and then takes the value of 'right' as being the max
+of those values for some k-steps of prognostication. The agent could also use a weighted-sum of these
+actions, or might even perform a recursive search (for instance, within a radius of size k) for the direction
+of the state with the highest value.
+
+In sum, once the agent is trained, the implementor can use the learned value structure however they wish, to maximize
+the agent's behavior.
+
+Once the agent is trained, its perfectly fair to implement any state-value-estimation strategy desired via
+its state-estimator and state-value-estimator (the q-net).
+*/
+Action Q2Agent::_searchForOptimalAction(const World* world, const vector<Missile>& missiles)
+{
+	//Simple cross search: let the agent simulate taking a given action repeatedly for k steps; its estimate
+	//of the immediate value of the action is then the max of those values. This pushes the agent toward better values.
+	//Note that this also gives globally optimal behavior optimal, since the "cross" of the search is not stationary, but is
+	//updated after an action is taken, hence leading the agent to search most local values.
+	bool collision;
+	int i, action;
+	double xHeading, yHeading, destX, destY;
+	double maxQ = -1000000;
+	Action maxAction = ACTION_DOWN;
+	const int HORIZON = 3; //the k parameter, allowing the agent to simulate its actions for up to k-steps
+	vector<double> tempState;
+	
+	tempState.resize(STATE_DIMENSION,0);
+	
+	//Simulate each action repeatedly for k steps
+	for(action = 0; action < NUM_ACTIONS; action++){
+		//get the velocity/heading state-specific values
+		switch(action){
+			case ACTION_UP:
+				xHeading = 0;
+				yHeading = 1.0;
+				break;
+			case ACTION_RIGHT:
+				xHeading = 1.0;
+				yHeading = 0;
+				break;
+			case ACTION_DOWN:
+				xHeading = 0;
+				yHeading = -1.0;
+				break;
+			case ACTION_LEFT:
+				xHeading = -1.0;
+				yHeading = 0;
+				break;
+			default:
+				cout << "ERROR action not found in _updateState()" << endl;
+				break;				
+		}
+
+		//estimate the action-states resulting after taking this action i times or until an obstacle is encountered
+		for(i = 1, collision = false; i <= HORIZON && !collision; i++){
+			//estimate of where the agent will be, given this action
+			destX = (double)agent.x + xHeading * (double)i;
+			destY = (double)agent.y + yHeading * (double)i;
+			//only estimate up until an obstacle/off-map position is encountered
+			collision = !world->IsValidPosition((int)destX, (int)destY) || world->GetCell((int)destX, (int)destY).isObstacle; //TODO: dangerous short-circuit logic
+			if(!collision){
+				//estimate the ith next-state
+				_estimateSubsequentState(xHeading, yHeading, destX, destY, world, missiles, tempState);		
+				//use the state estimate to drive the trained q-net
+				_qNet.Classify(tempState);
+				//the maximization step, over the states resulting from executing this action i times
+				double valueEstimate = _qNet.GetOutputs()[0].Output;
+				if(valueEstimate > maxQ){
+					maxQ = valueEstimate;
+					maxAction = (Action)action;
+				}
+				cout << GetActionStr((int)action) << " estimate: " << valueEstimate << endl;
+			}
+		}
+	}
+	
+	cout << "Executing max action " << GetActionStr((int)maxAction) << " with value: " << maxQ << endl;
+
+	return maxAction;
+}
+
 
 /*
 THIS IS JUST EXPERIMENTAL. I have no idea if this is a correct Baird-Advantage-Update interpretation.
@@ -1639,12 +1768,12 @@ void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missile
 	Action prevOptimalAction = ACTION_UP;
 
 	//Update agent's current state and state history for all possible actions
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	_qNet.SetEta(0.04);
+	_qNet.SetEta(0.01);
 	_qNet.SetMomentum(0.1);
 	_gamma = 0.9;
 
@@ -1674,7 +1803,7 @@ void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missile
 		//cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
 		_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
 		//track the max action available in current state
-		if(_qNet.GetOutputs()[0].Output > maxQ){
+		if(_qNet.GetOutputs()[0].Output > prevMaxQ){
 			prevMaxQ = _qNet.GetOutputs()[0].Output;
 			prevOptimalAction = (Action)action;
 		}
@@ -1736,7 +1865,7 @@ void Q2Agent::AverageUpdate(const World* world, const vector<Missile>& missiles)
 	Action optimalAction = ACTION_UP;
 
 	//Update agent's current state and state history for all possible actions
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	_qNet.SetEta(0.01);
 	_qNet.SetMomentum(0.1);
@@ -1839,7 +1968,7 @@ void Q2Agent::EpochalUpdate(const World* world, const vector<Missile>& missiles)
 	Action optimalAction = ACTION_UP;
 
 	//Update agent's current state and state history
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	//classify the new current-state across all action-nets 
 	for(i = 0, maxQ = -10000000; i < _qNets.size(); i++){
@@ -1918,7 +2047,7 @@ void Q2Agent::DiscriminativeUpdate(const World* world, const vector<Missile>& mi
 	Action optimalAction = ACTION_UP;
 
 	//Update agent's current state and state history
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	//classify the new current-state across all action-nets 
 	for(i = 0, maxQ = -10000000; i < _qNets.size(); i++){
@@ -2058,7 +2187,7 @@ void Q2Agent::OfflineUpdate(const World* world, const vector<Missile>& missiles)
 		Action optimalAction = ACTION_UP;
 
 		//Update agent's current state and state history
-		_updateCurrentState(world, missiles);
+		_updateCurrentActionStates(world, missiles);
 
 		//classify the new current-state across all action-nets 
 		for(i = 0, maxQ = -10000000; i < _qNets.size(); i++){
@@ -2121,7 +2250,7 @@ void Q2Agent::MinibatchUpdate(const World* world, const vector<Missile>& missile
 	}
 
 	//Update agent's current state and state history
-	_updateCurrentState(world, missiles);
+	_updateCurrentActionStates(world, missiles);
 
 	//enlarge the batch until size equals BATCH_SIZE (thus, no overwriting of experiences until size > BATCH_SIZE
 	if(_batch.size() < BATCH_SIZE){
