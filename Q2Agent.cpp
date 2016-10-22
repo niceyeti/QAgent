@@ -59,7 +59,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_t = 0; //time series index
 	_currentActionValues.resize(NUM_ACTIONS); //for caching the q-values per action, instead of re-calling Classify() on the net, per action
 	//init the neural networks, one for each action
-	_qNet.BuildNet(2, STATE_DIMENSION, 12, 1); //this is just generic, for testing;
+	_qNet.BuildNet(2, STATE_DIMENSION, STATE_DIMENSION * 3, 1); //this is just generic, for testing;
 	//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
 	_qNet.SetHiddenLayerFunction(TANH);
 	_qNet.SetOutputLayerFunction(LINEAR);
