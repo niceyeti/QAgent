@@ -17,9 +17,8 @@ class World{
 		vector<vector<WorldCell> > _world; //the map
 		void _setMaxGoalDist();
 		void _resetTraversalFlags();
-		void _setRandomGoalLocation();
-		void _setRandomAgentStartLocation(Agent& agent);
-		void _restartAgent(Q2Agent* qagent, double terminalValue);
+		void _setRandomGoalAndAgentLocations(Agent& agent);
+		void _restartAgent(Q2Agent* qagent);
 	public:
 		World();
 		World(int x, int y);

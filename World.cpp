@@ -86,9 +86,9 @@ void World::InitializeWorld(vector<Missile>& missiles, Agent& agent, int numObst
 	//place some random obstacles
 	for(i = 0; i < numObstacles; i++){
 		//get a random orientation, horizontal or vertical
-		if((rand() % 2) == 0){ //place a vertical obstacle
+		if(rand() % 2 == 0){ //place a vertical obstacle
 			x = rand() % _world[0].size();
-			y = rand() % (_world.size() - 14) + 10; //magic math places obstacles lower in view
+			y = rand() % (_world.size() - 14) + 6; //magic math places obstacles lower in view
 			//place the obstacle using the start coordinates from the bottom
 			for(j = y; j < (y + 4); j++){
 				_world[j][x].isObstacle = true;
@@ -96,7 +96,7 @@ void World::InitializeWorld(vector<Missile>& missiles, Agent& agent, int numObst
 		}
 		else{ //place a horizontal obstacle
 			x = rand() % (_world[0].size() - 7);
-			y = rand() % (_world.size() - 14) + 10;
+			y = rand() % (_world.size() - 14) + 6;
 			//place the obstacle using the start coordinates from the bottom
 			for(j = x; j < (x + 7); j++){
 				_world[y][j].isObstacle = true;
@@ -109,7 +109,7 @@ void World::InitializeWorld(vector<Missile>& missiles, Agent& agent, int numObst
 	//InitRandomMissiles(missiles, 8);
 
 	//place the goal randomly in the upper region
-	_setRandomGoalLocation();
+	_setRandomGoalAndAgentLocations(agent);
 }
 
 /*
@@ -159,7 +159,7 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 
 	//allows the agent to find the goal a few times before resetting
 	if(qagent->EpochGoalCount >= qagent->GoalResetThreshold){
-		_restartAgent(qagent,1.0);
+		_restartAgent(qagent);
 	}
 	else{
 		//this is deliberately set *before* the agent moves, otherwise the agent always perceives it already visited its new location
@@ -220,12 +220,11 @@ void World::Update(vector<Missile>& missiles, Q2Agent* qagent, double timeStep)
 }
 
 //wrapper util for resetting the agent and restarting it in a random start location
-void World::_restartAgent(Q2Agent* qagent, double terminalValue)
+void World::_restartAgent(Q2Agent* qagent)
 {
-	_setRandomGoalLocation();
-	_setRandomAgentStartLocation(qagent->agent);
+	_setRandomGoalAndAgentLocations(qagent->agent);
 	_resetTraversalFlags();
-	qagent->ResetEpoch(terminalValue);
+	qagent->ResetEpoch();
 }
 
 
@@ -237,21 +236,36 @@ void World::_setMaxGoalDist()
 }
 
 
-void World::_setRandomGoalLocation()
+void World::_setRandomGoalAndAgentLocations(Agent& agent)
 {
-	//erase existing location
+	bool success = false;
+	//erase existing goal location
 	GetCell(GOAL_X, GOAL_Y).isGoal = false;
-	//set new location
-	GOAL_X = rand() % _maxX;
-	GOAL_Y = rand() % (_maxY / 5) + ((4 * _maxY) / 5);
-	GetCell(GOAL_X, GOAL_Y).isGoal = true;
-}
-
-//randomly place the agent in the lower portion of the world
-void World::_setRandomAgentStartLocation(Agent& agent)
-{
-	agent.x = rand() % (_maxX / 8);
-	agent.y = rand() % (_maxY / 6);
+	
+	//repeat until agent/goal are placed in valid locations
+	while(!success){
+		//set new goal and agent locations, opposite eachother, with top and bottom randomly switched (this is to help learning)
+		if(rand() % 2 == 0){
+			//place goal above, agent below
+			GOAL_X = rand() % (_maxX - 2) + 1;
+			GOAL_Y = rand() % (_maxY / 5) + (4 * _maxY) / 5;
+			GetCell(GOAL_X, GOAL_Y).isGoal = true;
+			//restart the agent below
+			agent.x = rand() % (_maxX - 4) + 1;
+			agent.y = rand() % (_maxY / 6);
+		}
+		else{ //else place the agent above, goal below
+			//place goal below
+			GOAL_X = rand() % (_maxX - 2) + 1;
+			GOAL_Y = rand() % (_maxY / 5);
+			GetCell(GOAL_X, GOAL_Y).isGoal = true;
+			//restart the agent above
+			agent.x = rand() % (_maxX - 4) + 1;
+			agent.y = rand() % (_maxY / 6) + (5 * _maxY) / 6 - 1;
+		}
+		
+		success = !GetCell(GOAL_X, GOAL_Y).isObstacle && !GetCell(agent.x, agent.y).isObstacle;
+	}
 }
 
 //On teleportation back to start, all traversalCounts are reset to zero.

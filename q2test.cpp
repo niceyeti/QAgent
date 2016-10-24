@@ -11,7 +11,7 @@ int main(int argc, char** argv, char** env)
 
 	srand(time(NULL));
 	usleep(rand() % 50000);
-	world.InitializeWorld(missiles, q2Agent.agent, 45);
+	world.InitializeWorld(missiles, q2Agent.agent, 47);
 
 	while(true){
 		//tell the agent the current world state, letting it take some action

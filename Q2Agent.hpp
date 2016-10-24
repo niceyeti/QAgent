@@ -8,7 +8,6 @@
 #include "sys/types.h"
 #include "sys/wait.h"
 
-
 //smaller values (3-5) have worked the best; larger values produce oscillations. The effect of a smaller number of memorized locations
 //is to let only the most recent locations push the agent, hence pushing the opposite in a more orthogonal direct wrt the visited region's radius
 #define NUM_MEMORIZED_LOCATIONS 10
@@ -37,7 +36,7 @@ class Experience{
 /*
 A highly similar implementation to QAgent, but this agent uses only a single network to represent
 all possible actions. This is just an experiment to see how the agent performs. The QAgent showed
-great promise, convering to local qvalues for the last action performed; however, the other actions
+great promise, converging to local qvalues for the last action performed; however, the other actions
 were not convergent, so the policy of choosing the best next action was a choice among one really good
 q-value estimate for the last action, and then 3 other noisier estimates.
 
@@ -114,7 +113,7 @@ class Q2Agent{
 		void _recordExample(const vector<double>& state, double qTarget, double qEstimate, Action action);
 
 		Action _getStochasticOptimalAction();
-		Action _searchForOptimalAction(const World* world, const vector<Missile>& missiles);
+		Action _searchForOptimalAction(const World* world, const vector<Missile>& missiles, const int searchHorizon);
 		Action _selectionMethod1();
 		Action _selectionMethod2();
 		double _absDiff(double d1, double d2);
@@ -140,7 +139,7 @@ class Q2Agent{
 		double GoalResetThreshold;
 		void StoreTerminalState(double terminalValue);
 		void StoreRewardParams(const vector<double>& rewardParams, double reward);
-		void ResetEpoch(double terminalValue);
+		void ResetEpoch();
 		void PrintCurrentStateEstimates();
 		const char* GetActionStr(int i);
 		void LoopedUpdate(const World* world, const vector<Missile>& missiles);
