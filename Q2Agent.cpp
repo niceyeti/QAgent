@@ -59,7 +59,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_t = 0; //time series index
 	_currentActionValues.resize(NUM_ACTIONS); //for caching the q-values per action, instead of re-calling Classify() on the net, per action
 	//init the neural networks, one for each action
-	_qNet.BuildNet(2, STATE_DIMENSION, 2, 1); //this is just generic, for testing;
+	_qNet.BuildNet(2, STATE_DIMENSION, STATE_DIMENSION, 1); //this is just generic, for testing;
 	//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
 	_qNet.SetHiddenLayerFunction(TANH);
 	_qNet.SetOutputLayerFunction(LINEAR);
@@ -68,7 +68,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
 	_qNet.SetMomentum(0.2);
 	//set the regularization term
-	_qNet.SetWeightDecay(0.001);
+	_qNet.SetWeightDecay(0.0001);
 
 	//init the reward-approximation neural net (this is purely experimental, may not be used in all learning paradigms)
 	_rewardApproximator.BuildNet(2, STATE_DIMENSION, STATE_DIMENSION, 1); //this is just generic, for testing;
@@ -1583,9 +1583,11 @@ Parameters under which thie method has usually worked well (these found a good p
 	#define EXTERNAL_REWARD_VISITED -0.1
 	#define EXTERNAL_REWARD_COLLISION -3
 	search_horizon = 3
+10/24: Under these params, the agent shows excellent convergence, especially with the action-search-policy. It still exhibits unlearning,
+which is evident when the agent goes on policy during a particularly bad episode of collisions or traps. This could be remedied with a lower
+learning rate (0.05 works great), by taking measures of the agent's highest performance and 'pocketing' the network weights at that stage, and so on.
 
-Even when the agent finds a good policy (for which a Pocket strategy could be useful), it can unlearn
-that policy and go chaotic again.
+
 */
 void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missiles)
 {
@@ -1599,9 +1601,10 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	_qNet.SetEta(0.1);
+	_qNet.SetEta(0.05);
 	//Theoretically momentum may be bad for online learning: since the inputs are so correlated, momentum causes unlearning (too much local adaptation).
 	_qNet.SetMomentum(0.5);
+	_qNet.SetWeightDecay(0.001); //arbitrary, not something I played with much
 	_gamma = 0.9;
 
 	//classify the new current-state across all action-nets 
