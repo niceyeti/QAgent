@@ -1798,7 +1798,7 @@ void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missile
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	_qNet.SetEta(0.01);
+	_qNet.SetEta(0.02);
 	_qNet.SetMomentum(0.1);
 	_gamma = 0.9;
 
@@ -1834,21 +1834,22 @@ void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missile
 		}
 	}
 
-	//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
-	//backpropagate the error and update the network weights for the last action (only)
-	const vector<double>& previousState = _getPreviousState((Action)prevOptimalAction);
-	_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
-	prevEstimate = _qNet.GetOutputs()[0].Output;
-	cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
-	_qNet.BackpropagateError(previousState, qTarget);
-	_qNet.UpdateWeights(previousState, qTarget);
+	if(_totalEpisodes < 20000){
+		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+		//backpropagate the error and update the network weights for the last action (only)
+		const vector<double>& previousState = _getPreviousState((Action)prevOptimalAction);
+		_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+		prevEstimate = _qNet.GetOutputs()[0].Output;
+		cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
+		_qNet.BackpropagateError(previousState, qTarget);
+		_qNet.UpdateWeights(previousState, qTarget);
 
-	//cout << "44" << endl;
-	if(_episodeCount > 100){
-		//record this example; this is useful for both replay-based learning and for data analysis
-		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+		//cout << "44" << endl;
+		if(_episodeCount > 100){
+			//record this example; this is useful for both replay-based learning and for data analysis
+			_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+		}
 	}
-	//}
 
 	//take the action with the highest q-value
 	//LastAction = CurrentAction;
@@ -1856,10 +1857,13 @@ void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if(_totalEpisodes < 5000){
+	if(_totalEpisodes < 20000){
 		if(rand() % 5 == 4){
 			CurrentAction = (Action)(rand() % NUM_ACTIONS);
 		}
+	}
+	else{
+		CurrentAction = _searchForOptimalAction(world, missiles, 2);
 	}
 
 	//map the action into outputs
@@ -1876,12 +1880,26 @@ void Q2Agent::AdvantageUpdate(const World* world, const vector<Missile>& missile
 /*
 Virtually the same as classical q-learning, however instead of maxQ{a in Action}(Q(s',a)),
 this averages over all of the q-values in the successor state. Theoretically this should give a milder,
-more conservative, possibly more convergent agent. It just seemed like a simply modification
-to basic q-learning to try.
+more conservative, possibly more convergent agent that favors states with better average value over extreme
+actions with only one good value. It just seemed like a simply modification to basic q-learning to try.
+This method could possibly operate better in non-stationary environments, since the agent might be more
+averse/defensive compared with ClassicalQ-learning. But this is a big 'perhaps', and requires more
+rigorous mathematical justification. The aggressiveness of Classical Q-Learning can be coupled with 
+a conservative action-policy, which is likely a more robust way to engineer the agent's behavior; and likewise
+doing so preserves the optimal/precise information given by aggressive learning styles.
 
 This works just fine. Possibly better than Classical-Update. This means there are probably many different ways to
 1) Play with the basic q-value recursion for better performance and interesting behavior/policy outcomes
 2) Define the recursion to select actions optimizing different expected values per action (eg, using risk analysis)
+
+The search-based action policy has different behavior here, and may want for different horizon values. The agent always
+reaches the goal, but occasionally takes drastically conservative actions very close to the goal, such as nearly
+reaching the goal then bailing to the opposite side of the world, before returning directly (optimally/very quickly) to
+the goal with precision. This may be the action policy, or noise in the learned weights. More training episodes helped
+overcome some of this, but it would still occur. It just seems like the agent occasionally favors very low-density regions
+for a while, behaving very conservatively, before finding the goal very quickly.
+Constraining the agent to only learn non-zero reward values eliminated the problem, so this looks like another over-learning
+phenomena.
 */
 void Q2Agent::AverageUpdate(const World* world, const vector<Missile>& missiles)
 {
@@ -1892,8 +1910,15 @@ void Q2Agent::AverageUpdate(const World* world, const vector<Missile>& missiles)
 	//Update agent's current state and state history for all possible actions
 	_updateCurrentActionStates(world, missiles);
 
-	_qNet.SetEta(0.01);
-	_qNet.SetMomentum(0.1);
+	/*
+	Params have worked for all of these ranges: eta=[0.01-0.1], gamma=[0.8-0.99]
+	It would be nice to figure out the param relationships to find the optimal settings.
+	*/
+	_qNet.SetEta(0.05);
+	//Theoretically momentum may be bad for online learning: since the inputs are so correlated, momentum causes unlearning (too much local adaptation).
+	_qNet.SetMomentum(0.5);
+	_qNet.SetWeightDecay(0.001); //arbitrary, not something I played with much
+	_gamma = 0.9;
 
 	//classify the new current-state across all action-nets 
 	for(action = 0, sumQ = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
@@ -1920,21 +1945,22 @@ void Q2Agent::AverageUpdate(const World* world, const vector<Missile>& missiles)
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
-	//if(reward != 0.0 && _totalEpisodes < 20000){
-			//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
-			//backpropagate the error and update the network weights for the last action (only)
-			const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
-			_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
-			prevEstimate = _qNet.GetOutputs()[0].Output;
-			cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
-			_qNet.BackpropagateError(previousState, qTarget);
-			_qNet.UpdateWeights(previousState, qTarget);
-			//cout << "44" << endl;
+	//constraining updates seems to help this method behave better on-policy
+	if(reward != 0.0 && _totalEpisodes < 20000){
+		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+		//backpropagate the error and update the network weights for the last action (only)
+		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+		_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+		prevEstimate = _qNet.GetOutputs()[0].Output;
+		cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
+		_qNet.BackpropagateError(previousState, qTarget);
+		_qNet.UpdateWeights(previousState, qTarget);
+		//cout << "44" << endl;
 		if(_episodeCount > 100){
 			//record this example; this is useful for both replay-based learning and for data analysis
 			_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 		}
-	//}
+	}
 
 	//take the action with the highest q-value
 	//LastAction = CurrentAction;
@@ -1952,6 +1978,9 @@ void Q2Agent::AverageUpdate(const World* world, const vector<Missile>& missiles)
 			*/
 			CurrentAction = (Action)(rand() % NUM_ACTIONS);
 		}
+	}
+	else{
+		CurrentAction = _searchForOptimalAction(world, missiles, 2);
 	}
 
 	//map the action into outputs
