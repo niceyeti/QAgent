@@ -1587,6 +1587,7 @@ Parameters under which thie method has usually worked well (these found a good p
 which is evident when the agent goes on policy during a particularly bad episode of collisions or traps. This could be remedied with a lower
 learning rate (0.05 works great), by taking measures of the agent's highest performance and 'pocketing' the network weights at that stage, and so on.
 
+10/27: A three layer net with 2 hidden nodes per layer (a kind of dim-reduction) also works well. No formal result on if its better.
 
 */
 void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missiles)
