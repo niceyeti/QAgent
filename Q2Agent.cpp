@@ -1690,6 +1690,107 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 }
 
 /*
+Same as Classical Q-learning, but with with no max operator over actions of the successor state.
+
+Works great!
+*/
+void Q2Agent::SarsaUpdate(const World* world, const vector<Missile>& missiles)
+{
+	int action;
+	double maxQ, qTarget, prevEstimate;
+	Action optimalAction = ACTION_UP;
+
+	//Update agent's current state and state history for all possible actions
+	_updateCurrentActionStates(world, missiles);
+
+	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
+	It would be nice to figure out the param relationships to find the optimal settings.
+	*/
+	_qNet.SetEta(0.02);
+	//Theoretically momentum may be bad for online learning: since the inputs are so correlated, momentum causes unlearning (too much local adaptation).
+	_qNet.SetMomentum(0.5);
+	_qNet.SetWeightDecay(0.001); //arbitrary, not something I played with much
+	_gamma = 0.9;
+
+	//classify the new current-state across all action-nets 
+	optimalAction = (Action)(rand() % NUM_ACTIONS);
+	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
+		//classify the state we just entered, given the previous action
+		_qNet.Classify(_getCurrentState((Action)action));
+		//cout << GetActionStr(action) << "\t" << _qNet.GetOutputs()[0].Output << endl;
+		_currentActionValues[action] = _qNet.GetOutputs()[0].Output;
+		//track the max action available in current state
+		if(_qNet.GetOutputs()[0].Output > maxQ){
+			maxQ = _qNet.GetOutputs()[0].Output;
+			optimalAction = (Action)action;
+		}
+	}
+	
+	//get the target q factor from the experienced reward given the last action
+	double reward = _getCurrentRewardValue_Terminal(world, missiles);
+	//cout << "reward: " << reward << endl;
+	qTarget = reward + _gamma * _currentActionValues[CurrentAction];
+	//cout << "QTARGET: " << qTarget << endl;
+	_epochReward += qTarget;
+	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
+
+	//if(reward != 0.0 && _totalEpisodes < 20000){
+	if(_totalEpisodes < 10000){
+		//for(int i = 0; i < 3; i++){
+		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
+		//backpropagate the error and update the network weights for the last action (only)
+		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
+		_qNet.Classify(previousState); //the net must be re-clamped to the previous state's signals
+		prevEstimate = _qNet.GetOutputs()[0].Output;
+		cout << "reward: " << reward << "    prev estimate: " << prevEstimate << endl;
+		_qNet.BackpropagateError(previousState, qTarget);
+		_qNet.UpdateWeights(previousState, qTarget);
+		//cout << "44" << endl;
+		if(_episodeCount > 100){
+			//record this example; this is useful for both replay-based learning and for data analysis
+			_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
+		}
+		//}
+	}
+
+	//take the action with the highest q-value
+	//LastAction = CurrentAction;
+	CurrentAction = optimalAction;
+/*
+	//SARSA normally learns on-policy, so no e-greedy action selection; not sure if this is sound in real-domain though
+	if(_totalEpisodes < 10000){
+		if(rand() % 5 == 4){	
+			CurrentAction = (Action)(rand() % NUM_ACTIONS);
+		}
+	}
+	*/
+	
+	
+	if(_totalEpisodes > 10000){
+		//An alternative, more-complex action-policy compared to basic e-greedy policies
+		//Results: This works nicely (0% collision rate), usually only in compliment with shutting off
+		//backpropagation at the same epoch/episode when e-greedy is shut off.
+		CurrentAction = _searchForOptimalAction(world, missiles, 3);
+	}
+	
+
+	//map the action into outputs
+	_takeAction(CurrentAction);
+
+	//some metalogic stuff: random restarts and force agent to move if in same place too long
+	//TODO: this member represents bad coupling
+	agent.sufferedCollision = false;
+	_episodeCount++;
+	_totalEpisodes++;
+
+	//testing: print the neural net weights
+	//if(_episodeCount % 100 == 1){
+		//_qNet.PrintWeights();
+	//}
+}
+
+
+/*
 An alternative to basic e-greedy action policies. Excluding other details or information that
 inform the choice of policy, this policy structure allows the agent to prognosticate a little bit
 about the values of actions within its local space. For instance, the immediate value may not simply

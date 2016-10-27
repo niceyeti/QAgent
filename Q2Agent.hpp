@@ -152,6 +152,7 @@ class Q2Agent{
 		void DirectApproximationUpdate(const World* world, const vector<Missile>& missiles);
 		void LogisticRewardApproximationUpdate(const World* world, const vector<Missile>& missiles);
 		void ClassicalUpdate(const World* world, const vector<Missile>& missiles);
+		void SarsaUpdate(const World* world, const vector<Missile>& missiles);
 		void Update(const World* world, const vector<Missile>& missiles);
 		Action CurrentAction;
 };
