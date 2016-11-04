@@ -1274,12 +1274,18 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 	double maxQ = 0, qTarget = 0, rewardTarget = 0, rewardEstimate = 0, prevEstimate = 0;
 	Action optimalAction = ACTION_UP;
 
+	_qNet.SetEta(0.02);
+	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
+	_qNet.SetMomentum(0.0);
+	//set the regularization term
+	_qNet.SetWeightDecay(0.0001);
+
 	//Update agent's current state and state history for all possible actions
 	_updateCurrentActionStates(world, missiles);
 
 	//Update external rewards (agent ran into wall, reached goal, etc)
 	_rewardApproximator.SetEta(0.05);
-	_rewardApproximator.SetMomentum(0.5);
+	_rewardApproximator.SetMomentum(0.0);
 	rewardTarget = _updateExternalReward(world,missiles);
 	_rewardApproximator.Classify(_getCurrentState((Action)action));
 	rewardEstimate = _rewardApproximator.GetOutputs()[0].Output;
