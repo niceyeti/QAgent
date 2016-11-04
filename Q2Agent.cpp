@@ -519,6 +519,7 @@ void Q2Agent::_estimateSubsequentState(double xHeading, double yHeading, double 
 		subsequentState[SA_GOAL_COSINE] = _cosSim(x_temp, y_temp, xHeading, yHeading);
 	}
 
+	/*
 	//determine if agent is headed in a direction where it has already been, in the last k steps
 	//TODO: try both EMA and centroid/avg
 	//destX = _locationEma.first - agent.x;
@@ -532,6 +533,7 @@ void Q2Agent::_estimateSubsequentState(double xHeading, double yHeading, double 
 		//measures cos-sim between the heading vector and the vector pointing in the direction of some estimated of the previous location
 		subsequentState[SA_RECENT_LOCATION_COSINE] = _cosSim(x_temp, y_temp, xHeading, yHeading);
 	}
+	*/
 }
 
 
@@ -1602,10 +1604,10 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	_qNet.SetEta(0.05);
+	_qNet.SetEta(0.03);
 	//Theoretically momentum may be bad for online learning: since the inputs are so correlated, momentum causes unlearning (too much local adaptation).
-	_qNet.SetMomentum(0.5);
-	_qNet.SetWeightDecay(0.001); //arbitrary, not something I played with much
+	_qNet.SetMomentum(0.0);
+	_qNet.SetWeightDecay(0.000); //Arbitrary. Larger (~0.01) seems to indeed improve results, but be wary of it encouraging traps.
 	_gamma = 0.9;
 
 	//classify the new current-state across all action-nets 
@@ -1631,6 +1633,11 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
+	//a possible heuristic: allow the agent to continue learning, but slowly, after converging
+	//if(_totalEpisodes > 10000){
+	//	_qNet.SetEta(0.001);
+	//}
+
 	//if(reward != 0.0 && _totalEpisodes < 20000){
 	if(_totalEpisodes < 10000){
 		//for(int i = 0; i < 3; i++){
@@ -1643,7 +1650,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 		_qNet.BackpropagateError(previousState, qTarget);
 		_qNet.UpdateWeights(previousState, qTarget);
 		//cout << "44" << endl;
-		if(_episodeCount > 100){
+		if(_totalEpisodes > 10000){
 			//record this example; this is useful for both replay-based learning and for data analysis
 			_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 		}
@@ -1663,15 +1670,31 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 				CurrentAction = _getStochasticOptimalAction();
 			else
 				CurrentAction = (Action)(rand() % NUM_ACTIONS);
-			*/	
+			*/
 			CurrentAction = (Action)(rand() % NUM_ACTIONS);
+		}
+		/*Experimental action policy: let the agent take the action with the best long-term value;
+		this does NOT effect learning, which is still done wrt actions only t=1 step apart.
+		Observations: This works well, but it has to be tuned kind of like a learning rate. For instance,
+		whilst the agent is initially learning, its estimates are poor; hence estimating several steps ahead
+		still contains a great deal of uncertainty. This can lead to chaotic choices, where the agent mistakenly
+		assumes some direction is good several steps ahead, and divergently veers off in poor directions.
+		Hence, this works, but could use some sort of damping parameter, such as gradually increasing the
+		'horizon' parameter to the search function.
+		
+		There's also much to be said of the 'heavy shoes' perspective, requiring the agent to learn under difficult
+		circumstances (difficult == highly local estimates), and then removing those 'heavy shoes' once the agent
+		has adequately learned and allowing it to search for optimal semi-local actions using its state estimator.
+		*/
+		else{
+			CurrentAction = _searchForOptimalAction(world, missiles, 2);		
 		}
 	}
 	else{
 		//An alternative, more-complex action-policy compared to basic e-greedy policies
 		//Results: This works nicely (0% collision rate), usually only in compliment with shutting off
 		//backpropagation at the same epoch/episode when e-greedy is shut off.
-		CurrentAction = _searchForOptimalAction(world, missiles, 3);
+		CurrentAction = _searchForOptimalAction(world, missiles, 4);
 	}
 
 	//map the action into outputs
