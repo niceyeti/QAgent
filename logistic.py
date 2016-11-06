@@ -80,7 +80,7 @@ for alpha in alphaDict.keys():
 	Xs = posXs + negXs
 	classFreqDict = {1 : len(posXs), 0 : len(negXs)}
 	#build and run the logistic regression object
-	lr = linear_model.LogisticRegression(C=0.001)
+	lr = linear_model.LogisticRegression(C=0.0001)
 	lr.fit(Xs,Ys)
 	print("coefs "+alpha+": "+str(lr.coef_))
 	#output the alpha first
