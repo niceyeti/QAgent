@@ -106,7 +106,7 @@ class Q2Agent{
 		void _estimateSubsequentState(double xHeading, double yHeading, double destX, double destY, const World* world, const vector<Missile>& missiles, vector<double>& subsequentState);
 		
 		//experimental logging
-		void _flushRewardVectors();
+		void _flushRewardVectors(bool clearVecs);
 		void _storeRewardParams(const vector<double>& state, double totalReward);
 		void _storeTerminalState(const vector<double>& state, double terminalValue);
 		void _storeLabeledVector(const vector<double>& state, double terminalValue, fstream& outputFile);

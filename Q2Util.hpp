@@ -41,9 +41,15 @@ using namespace std;
 #define ALPHA_GOAL_REACHED 'g'
 #define ALPHA_REPETITION 't'
 #define ALPHA_COLLISION 'c'
+/*
 #define EXTERNAL_REWARD_GOAL 2
 #define EXTERNAL_REWARD_VISITED -0.2
 #define EXTERNAL_REWARD_COLLISION -3
+*/
+#define EXTERNAL_REWARD_GOAL 1
+#define EXTERNAL_REWARD_VISITED -1
+#define EXTERNAL_REWARD_COLLISION -1
+
 
 //The actions. Each of which will have its own neural network
 #define NUM_ACTIONS 4

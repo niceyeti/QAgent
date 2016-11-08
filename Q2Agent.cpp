@@ -104,7 +104,8 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_alphaNeurons.insert( pair<char,Neuron>(ALPHA_COLLISION, Neuron(STATE_DIMENSION + 1, LOGISTIC)));
 	//randomize the neurons' initial weights
 	for(auto it = _alphaNeurons.begin(); it != _alphaNeurons.end(); ++it){
-		it->second.AssignRandomWeights(1.0,-1.0);
+		//it->second.AssignRandomWeights(1.0,-1.0);
+		it->second.AssignUniformWeights(0.0); //effectively inits all uniforms to output equal binary event probability 0.50
 	}
 
 	//set up the various output files
@@ -803,7 +804,7 @@ double Q2Agent::_updateExternalReward(const World* world, const vector<Missile>&
 /*
 Flushes all of the k-vectors to whatever file they're going to.
 */
-void Q2Agent::_flushRewardVectors()
+void Q2Agent::_flushRewardVectors(bool clearVecs)
 {
 	for(int i = 0; i < _kVectors.size(); i++){
 		kvector& kv = _kVectors[i];
@@ -814,8 +815,10 @@ void Q2Agent::_flushRewardVectors()
 		_kVectorFile << kv.r << "," << kv.alpha << endl;
 	}
 
-	//clear current vectors
-	_kVectors.clear();
+	if(clearVecs){
+		//clear current vectors
+		_kVectors.clear();
+	}
 }
 
 
@@ -1424,7 +1427,7 @@ void Q2Agent::LogisticRewardApproximationUpdate(const World* world, const vector
 	if(_kVectors.size() > 5000){
 		string junk, line;
 		//for the sake of experimentation, I'm just outputting the k-vectors, mining them in python, then reading the output params back in
-		_flushRewardVectors();
+		_flushRewardVectors(true);
 		cout << "Enter anything to continue, once python logistic regression has completed, and params can be read from rwdParams.csv" << endl;
 		cin >> junk;
 		//now read the reward params back in to each neuron
@@ -1523,14 +1526,15 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	
 	//get the target q factor from the experienced reward given the last action
 	//double reward = _getCurrentRewardValue_Manual1(world, missiles);
-	double reward = _getCurrentRewardValue_Logistic(world, missiles);
+	//double reward = _getCurrentRewardValue_Logistic(world, missiles);
+	double reward = -0.5;
 	//cout << "reward: " << reward << endl;
 	qTarget = reward + _gamma * maxQ;
 	//cout << "QTARGET: " << qTarget << endl;
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
-	if(_totalEpisodes < 20000){
+	if(_totalEpisodes < 15000){
 		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 		//backpropagate the error and update the network weights for the last action (only)
 		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
@@ -1557,7 +1561,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if(_totalEpisodes < 20000){
+	if(_totalEpisodes < 15000){
 		if(rand() % 5 == 4){
 			/*if(rand() % 2 == 0){
 				CurrentAction = _getStochasticOptimalAction();
@@ -2662,6 +2666,6 @@ void Q2Agent::PrintState()
 		}
 	}
 	//print the epoch measures; ideally all should decrease with training, and avg reward should increase
-	cout << "Last epoch (" << _epochCount << "epoch/" << _totalEpisodes << "episodes) performance:  collision rate: " << ((double)((int)(_lastEpochCollisionRate * 1000)) / 100) << "%  #actions: " << _lastEpochActionCount;
+	cout << "Last epoch (" << _epochCount << " epoch / " << _totalEpisodes << " episodes) performance:  collision rate: " << ((double)((int)(_lastEpochCollisionRate * 1000)) / 100) << "%  #actions: " << _lastEpochActionCount;
 	cout << endl;
 }
