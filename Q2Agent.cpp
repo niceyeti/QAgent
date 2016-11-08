@@ -1504,6 +1504,8 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	int action;
 	double maxQ, qTarget, prevEstimate;
 	Action optimalAction = ACTION_UP;
+	
+	_qNet.SetEta(0.05);
 
 	//Update agent's current state and state history for all possible actions
 	_updateCurrentActionStates(world, missiles);
@@ -1527,7 +1529,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	//get the target q factor from the experienced reward given the last action
 	//double reward = _getCurrentRewardValue_Manual1(world, missiles);
 	//double reward = _getCurrentRewardValue_Logistic(world, missiles);
-	double reward = -0.5;
+	double reward = -1.0;
 	//cout << "reward: " << reward << endl;
 	qTarget = reward + _gamma * maxQ;
 	//cout << "QTARGET: " << qTarget << endl;
