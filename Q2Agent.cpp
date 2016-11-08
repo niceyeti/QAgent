@@ -1513,7 +1513,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	//Update external rewards (agent ran into wall, reached goal, etc)
 	_updateExternalReward(world, missiles);
 
-	//classify the new current-state across all action-nets 
+	//classify the new current-state across all action-nets
 	for(action = 0, maxQ = -10000000; action < NUM_ACTIONS; action++){
 		//classify the state we just entered, given the previous action
 		_qNet.Classify(_getCurrentState((Action)action));
@@ -1529,7 +1529,8 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 	//get the target q factor from the experienced reward given the last action
 	//double reward = _getCurrentRewardValue_Manual1(world, missiles);
 	//double reward = _getCurrentRewardValue_Logistic(world, missiles);
-	double reward = -1.0;
+	double reward = _getCurrentRewardValue_Terminal(world, missiles);
+	//double reward = -1.0;
 	//cout << "reward: " << reward << endl;
 	qTarget = reward + _gamma * maxQ;
 	//cout << "QTARGET: " << qTarget << endl;
@@ -1636,9 +1637,14 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	_qNet.SetEta(0.08);
+	if(_totalEpisodes < 10000){
+	_qNet.SetEta(0.05);
+	}
+	else{
+		_qNet.SetEta(0.01);
+	}
 	//Theoretically momentum may be bad for online learning: since the inputs are so correlated, momentum causes unlearning (too much local adaptation).
-	_qNet.SetMomentum(0.2);
+	_qNet.SetMomentum(0.0);
 	_qNet.SetWeightDecay(0.001); //Arbitrary. Larger (~0.01) seems to indeed improve results, but be wary of it encouraging traps.
 	_gamma = 0.9;
 
@@ -1723,12 +1729,14 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 		}
 		*/
 	}
+	
 	else{
 		//An alternative, more-complex action-policy compared to basic e-greedy policies
 		//Results: This works nicely (0% collision rate), usually only in compliment with shutting off
 		//backpropagation at the same epoch/episode when e-greedy is shut off.
-		CurrentAction = _searchForOptimalAction(world, missiles, 3);
+		CurrentAction = _searchForOptimalAction(world, missiles, 1);
 	}
+	
 
 	//map the action into outputs
 	_takeAction(CurrentAction);
