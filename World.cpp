@@ -326,7 +326,7 @@ void World::Draw(vector<Missile>& missiles, Agent& agent)
 	for(i = 0; i < _world.size(); i++){
 		for(j = 0; j < _world[i].size(); j++){
 			if(_world[i][j].traversalCount > 0){
-				_worldString[ i * lineWidth + j ] = '-';
+				_worldString[ i * lineWidth + j ] = '*';
 			}
 		}
 	}

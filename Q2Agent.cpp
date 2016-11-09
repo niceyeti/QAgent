@@ -1637,15 +1637,15 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	if(_totalEpisodes < 10000){
+	if(_totalEpisodes < 15000){
 	_qNet.SetEta(0.05);
 	}
 	else{
 		_qNet.SetEta(0.01);
 	}
 	//Theoretically momentum may be bad for online learning: since the inputs are so correlated, momentum causes unlearning (too much local adaptation).
-	_qNet.SetMomentum(0.0);
-	_qNet.SetWeightDecay(0.001); //Arbitrary. Larger (~0.01) seems to indeed improve results, but be wary of it encouraging traps.
+	_qNet.SetMomentum(0.5);
+	_qNet.SetWeightDecay(0.0001); //Arbitrary. Larger (~0.01) seems to indeed improve results, but be wary of it encouraging traps.
 	_gamma = 0.9;
 
 	//classify the new current-state across all action-nets 
@@ -1677,7 +1677,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 	//}
 
 	//if(reward != 0.0 && _totalEpisodes < 20000){
-	if(_totalEpisodes < 10000){
+	if(_totalEpisodes < 15000){
 		//for(int i = 0; i < 3; i++){
 		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 		//backpropagate the error and update the network weights for the last action (only)
@@ -1701,7 +1701,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if(_totalEpisodes < 10000){
+	if(_totalEpisodes < 15000){
 		if(rand() % 5 == 4){
 			/*
 			if(rand() % 2 == 0)
@@ -1725,7 +1725,7 @@ void Q2Agent::ClassicalUpdate(const World* world, const vector<Missile>& missile
 		has adequately learned and allowing it to search for optimal semi-local actions using its state estimator.
 		
 		else{
-			CurrentAction = _searchForOptimalAction(world, missiles, 2);		
+			CurrentAction = _searchForOptimalAction(world, missiles, 1);		
 		}
 		*/
 	}
@@ -1770,7 +1770,7 @@ void Q2Agent::SarsaUpdate(const World* world, const vector<Missile>& missiles)
 	/*params have worked for all of these ranges: eta=[0.01-0.08], gamma=[0.8-0.99]
 	It would be nice to figure out the param relationships to find the optimal settings.
 	*/
-	_qNet.SetEta(0.02);
+	_qNet.SetEta(0.05);
 	//Theoretically momentum may be bad for online learning: since the inputs are so correlated, momentum causes unlearning (too much local adaptation).
 	_qNet.SetMomentum(0.5);
 	_qNet.SetWeightDecay(0.001); //arbitrary, not something I played with much
@@ -1799,7 +1799,7 @@ void Q2Agent::SarsaUpdate(const World* world, const vector<Missile>& missiles)
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
 	//if(reward != 0.0 && _totalEpisodes < 20000){
-	if(_totalEpisodes < 10000){
+	if(_totalEpisodes < 15000){
 		//for(int i = 0; i < 3; i++){
 		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 		//backpropagate the error and update the network weights for the last action (only)
@@ -1830,11 +1830,11 @@ void Q2Agent::SarsaUpdate(const World* world, const vector<Missile>& missiles)
 	*/
 	
 	
-	if(_totalEpisodes > 10000){
+	if(_totalEpisodes > 15000){
 		//An alternative, more-complex action-policy compared to basic e-greedy policies
 		//Results: This works nicely (0% collision rate), usually only in compliment with shutting off
 		//backpropagation at the same epoch/episode when e-greedy is shut off.
-		CurrentAction = _searchForOptimalAction(world, missiles, 3);
+		CurrentAction = _searchForOptimalAction(world, missiles, 1);
 	}
 	
 
@@ -2145,7 +2145,7 @@ void Q2Agent::AverageUpdate(const World* world, const vector<Missile>& missiles)
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
 	//constraining updates seems to help this method behave better on-policy
-	if(reward != 0.0 && _totalEpisodes < 20000){
+	if(reward != 0.0 && _totalEpisodes < 15000){
 		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 		//backpropagate the error and update the network weights for the last action (only)
 		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
@@ -2167,7 +2167,7 @@ void Q2Agent::AverageUpdate(const World* world, const vector<Missile>& missiles)
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if(_totalEpisodes < 20000){
+	if(_totalEpisodes < 15000){
 		if(rand() % 5 == 4){
 			/*
 			if(rand() % 2 == 0)
@@ -2179,7 +2179,7 @@ void Q2Agent::AverageUpdate(const World* world, const vector<Missile>& missiles)
 		}
 	}
 	else{
-		CurrentAction = _searchForOptimalAction(world, missiles, 2);
+		CurrentAction = _searchForOptimalAction(world, missiles, 1);
 	}
 
 	//map the action into outputs
