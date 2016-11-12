@@ -11,7 +11,7 @@ int main(int argc, char** argv, char** env)
 
 	srand(time(NULL));
 	usleep(rand() % 50000);
-	world.InitializeWorld(missiles, q2Agent.agent, 66);
+	world.InitializeWorld(missiles, q2Agent.agent, 45);
 
 	while(true){
 		//tell the agent the current world state, letting it take some action
@@ -41,7 +41,7 @@ int main(int argc, char** argv, char** env)
 		//Update and draw the world; this is just updating a model and displaying a view
 		world.Update(missiles, &q2Agent, 1.0);
 		//only draw and delay once we want to see the agent's behavior
-		if(t > 8000){
+		if(t > 14000){
 			world.Draw(missiles, q2Agent.agent);
 			q2Agent.PrintState();
 			usleep(5000);

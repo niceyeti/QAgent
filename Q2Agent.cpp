@@ -63,7 +63,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	//set outputs to linear, since q-values are linear in some range after convergence like [-10.12-8.34]
 	_qNet.SetHiddenLayerFunction(TANH);
 	_qNet.SetOutputLayerFunction(LINEAR);
-	_qNet.InitializeWeights();
+	_qNet.AssignRandomWeights(1.0, 0.0);
 	_qNet.SetEta(_eta);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
 	_qNet.SetMomentum(0.2);
@@ -74,7 +74,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_rewardApproximator.BuildNet(2, STATE_DIMENSION, STATE_DIMENSION, 1); //this is just generic, for testing;
 	_rewardApproximator.SetHiddenLayerFunction(TANH);
 	_rewardApproximator.SetOutputLayerFunction(LINEAR);
-	_rewardApproximator.InitializeWeights();
+	_rewardApproximator.AssignRandomWeights(1.0, 0.0);
 	_rewardApproximator.SetEta(0.1);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
 	_rewardApproximator.SetMomentum(0.2);
