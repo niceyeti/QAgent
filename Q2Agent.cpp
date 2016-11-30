@@ -1301,6 +1301,7 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 	//Update external rewards (agent ran into wall, reached goal, etc)
 	_rewardApproximator.SetEta(0.1);
 	_rewardApproximator.SetMomentum(0.5);
+	_rewardApproximator.SetWeightDecay(0.001);
 	rewardTarget = _updateExternalReward(world,missiles);
 	_rewardApproximator.Classify(_getCurrentState((Action)action));
 	rewardEstimate = _rewardApproximator.GetOutputs()[0].Output;
