@@ -1274,7 +1274,14 @@ void Q2Agent::_tokenize(const string &s, char delim, vector<string> &tokens)
 }
 
 /*
+In this form, this method often converges to decent policies. Sometimes it gets stuck in pockets
+or shows other weird repetitive behavior and oscillations; but keep in mind these could be defects
+that arise from its greater precision. IOW, the decomposition has great potential if done properly,
+but also great likelihood for weird results due to por design. A motorcycle with two engines is great,
+only if they are synchronized...
 
+Remember better performance should be expected if the reward-net is allowed to periodically resample
+terminal reward examples. But can this be tested in some equivalent manner? eg, repeat updates. 
 */
 void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile>& missiles)
 {
@@ -1282,7 +1289,7 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 	double maxQ = 0, qTarget = 0, rewardTarget = 0, rewardEstimate = 0, prevEstimate = 0;
 	Action optimalAction = ACTION_UP;
 
-	_qNet.SetEta(0.02);
+	_qNet.SetEta(0.04);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
 	_qNet.SetMomentum(0.0);
 	//set the regularization term
@@ -1292,14 +1299,14 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 	_updateCurrentActionStates(world, missiles);
 
 	//Update external rewards (agent ran into wall, reached goal, etc)
-	_rewardApproximator.SetEta(0.05);
-	_rewardApproximator.SetMomentum(0.0);
+	_rewardApproximator.SetEta(0.1);
+	_rewardApproximator.SetMomentum(0.5);
 	rewardTarget = _updateExternalReward(world,missiles);
 	_rewardApproximator.Classify(_getCurrentState((Action)action));
 	rewardEstimate = _rewardApproximator.GetOutputs()[0].Output;
 	//only backpropagate non-zero external rewards (significant events)
-	if(rewardTarget != 0.0 && _totalEpisodes < 10000){
-		for(int i = 0; i < 4; i++){
+	if(rewardTarget != 0.0){// && _totalEpisodes < 15000){
+		for(int i = 0; i < 10; i++){
 		cout << "updating reward net" << endl;
 		_rewardApproximator.BackpropagateError(_getCurrentState((Action)action), rewardTarget);
 		_rewardApproximator.UpdateWeights(_getCurrentState((Action)action), rewardTarget);
@@ -1333,7 +1340,7 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 
 	//this seems to work nicely, to prevent unlearning from many non-terminal experiences
 	//if(rewardEstimate != 0){
-	if(_totalEpisodes < 20000){
+	if(_totalEpisodes < 15000){
 		//cout << "currentaction " << (int)CurrentAction << " qnets.size()=" << _qNets.size() << endl;
 		//backpropagate the error and update the network weights for the last action (only)
 		const vector<double>& previousState = _getPreviousState((Action)CurrentAction);
@@ -1361,7 +1368,7 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 
 	//randomize the action n% of the time
 	//if(rand() % (1 + (_episodeCount / 2000)) == (_episodeCount / 2000)){ //diminishing stochastic exploration
-	if((rand() % 5) == 4 && _totalEpisodes < 20000){
+	if((rand() % 5) == 4 && _totalEpisodes < 15000){
 		if(rand() % 2 == 0)
 			CurrentAction = _getStochasticOptimalAction();
 		else

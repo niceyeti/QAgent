@@ -248,20 +248,20 @@ void World::_setRandomGoalAndAgentLocations(Agent& agent)
 		if(rand() % 2 == 0){
 			//place goal above, agent below
 			GOAL_X = rand() % (_maxX - 2) + 1;
-			GOAL_Y = rand() % (_maxY / 5) + (4 * _maxY) / 5;
+			GOAL_Y = _maxY - (rand() % (_maxY / 6)); //puts goal in upper sixth
 			GetCell(GOAL_X, GOAL_Y).isGoal = true;
 			//restart the agent below
-			agent.x = rand() % (_maxX - 4) + 1;
+			agent.x = rand() % (_maxX - 2) + 1;
 			agent.y = rand() % (_maxY / 6);
 		}
 		else{ //else place the agent above, goal below
 			//place goal below
-			GOAL_X = rand() % (_maxX - 2) + 1;
-			GOAL_Y = rand() % (_maxY / 5);
+			GOAL_X = rand() % (_maxX - 5) + 2;
+			GOAL_Y = rand() % (_maxY / 6);  //puts goal in lower sixth
 			GetCell(GOAL_X, GOAL_Y).isGoal = true;
 			//restart the agent above
-			agent.x = rand() % (_maxX - 4) + 1;
-			agent.y = rand() % (_maxY / 6) + (5 * _maxY) / 6 - 1;
+			agent.x = rand() % (_maxX - 4) + 2;
+			agent.y = _maxY - (rand() % (_maxY / 6));
 		}
 		
 		success = !GetCell(GOAL_X, GOAL_Y).isObstacle && !GetCell(agent.x, agent.y).isObstacle;
