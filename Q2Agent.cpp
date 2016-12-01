@@ -1436,7 +1436,7 @@ void Q2Agent::LogisticRewardApproximationUpdate(const World* world, const vector
 		string junk, line;
 		//for the sake of experimentation, I'm just outputting the k-vectors, mining them in python, then reading the output params back in
 		_flushRewardVectors(true);
-		cout << "Enter anything to continue, once python logistic regression has completed, and params can be read from rwdParams.csv" << endl;
+		cout << "Enter anything to continue, once python logistic regression has completed on kvectors.csv, and params can be read from rwdParams.csv" << endl;
 		cin >> junk;
 		//now read the reward params back in to each neuron
 		fstream paramFile;
