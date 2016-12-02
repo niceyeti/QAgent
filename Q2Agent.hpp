@@ -23,6 +23,15 @@ class kvector{
 
 class World;
 
+//A straightforward nn training example class
+class RewardExample{
+	public:
+		RewardExample()=delete;
+		RewardExample(const vector<double>& state, double rewardTarget);
+		vector<double> xs;
+		double target;
+};
+
 //for minibatch implementations
 class Experience{
 	public:
@@ -64,6 +73,7 @@ class Q2Agent{
 		double _eta;
 		double _gamma;
 		double _totalExternalReward;
+		vector<RewardExample> _rewardExamples;
 		vector<kvector> _kVectors;
 		string _historyFilePath;
 		fstream _outputFile;
@@ -149,6 +159,7 @@ class Q2Agent{
 		//void MinibatchUpdate(const World* world, const vector<Missile>& missiles);
 		//void OfflineUpdate(const World* world, const vector<Missile>& missiles);
 		//void EpochalUpdate(const World* world, const vector<Missile>& missiles);
+		void DirectApproximationWithReplay(const World* world, const vector<Missile>& missiles);
 		void DirectApproximationUpdate(const World* world, const vector<Missile>& missiles);
 		void LogisticRewardApproximationUpdate(const World* world, const vector<Missile>& missiles);
 		void ClassicalUpdate(const World* world, const vector<Missile>& missiles);
