@@ -1307,7 +1307,7 @@ void Q2Agent::DirectApproximationWithReplay(const World* world, const vector<Mis
 
 	_qNet.SetEta(0.04);
 	//TODO: momentum is good in general, but I'm not sure the effect in this context. In general it speeds training and helps escape local minima.
-	_qNet.SetMomentum(0.03);
+	_qNet.SetMomentum(0.5);
 	//set the regularization term
 	_qNet.SetWeightDecay(0.00001);
 
@@ -1361,7 +1361,9 @@ void Q2Agent::DirectApproximationWithReplay(const World* world, const vector<Mis
 		cout << "Batch training reward approximator on " << _rewardExamples.size() << " learnt terminal reward examples..." << endl;
 		//batch train over the entire set for a while
 		_rewardApproximator.StochasticBatchTrain(_rewardExamples, 400000);
-		_flushRewardExamples();
+		//_flushRewardExamples();
+		cout << "Q network weights: " << endl;
+		_qNet.PrintWeights();
 		cout << "sleeping 5s" << endl;
 		sleep(5);
 	}
