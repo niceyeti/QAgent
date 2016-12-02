@@ -20,12 +20,6 @@ kvector::kvector(const vector<double>& state, double reward, char label)
 	alpha = label;
 }
 
-RewardExample::RewardExample(const vector<double>& state, double rewardTarget)
-{
-	xs = state;
-	target = rewardTarget;
-}
-
 Experience::Experience()
 {
 	BatchedState.resize(STATE_DIMENSION);
@@ -77,7 +71,7 @@ Q2Agent::Q2Agent(int initX, int initY)
 	_qNet.SetWeightDecay(0.0001);
 
 	//init the reward-approximation neural net (this is purely experimental, may not be used in all learning paradigms)
-	_rewardApproximator.BuildNet(2, STATE_DIMENSION, STATE_DIMENSION, 1); //this is just generic, for testing;
+	_rewardApproximator.BuildNet(2, STATE_DIMENSION, 2, 1); //structure was determined by offline training on rwdExamples.csv with various architectures
 	_rewardApproximator.SetHiddenLayerFunction(TANH);
 	_rewardApproximator.SetOutputLayerFunction(LINEAR);
 	_rewardApproximator.AssignRandomWeights(1.0, 0.0);
@@ -810,7 +804,7 @@ double Q2Agent::_updateExternalReward(const World* world, const vector<Missile>&
 /*
 Flushes all of the k-vectors to whatever file they're going to.
 */
-void Q2Agent::_flushRewardVectors(bool clearVecs)
+void Q2Agent::_flushKVectors(bool clearVecs)
 {
 	for(int i = 0; i < _kVectors.size(); i++){
 		kvector& kv = _kVectors[i];
@@ -1279,6 +1273,22 @@ void Q2Agent::_tokenize(const string &s, char delim, vector<string> &tokens)
     }
 }
 
+void Q2Agent::_flushRewardExamples()
+{
+	fstream rwdFile;
+	
+	rwdFile.open("rwdExamples.csv", ios::out);
+
+	for(int i = 0; i < _rewardExamples.size(); i++){
+		TrainingExample& te = _rewardExamples[i];
+		for(int j = 0; j < te.xs.size(); j++){
+			rwdFile << te.xs[j] << ",";
+		}
+		rwdFile << te.target << endl;
+	}
+	rwdFile.close();
+}
+
 /*
 In this form, this method often converges to decent policies. Sometimes it gets stuck in pockets
 or shows other weird repetitive behavior and oscillations; but keep in mind these could be defects
@@ -1311,12 +1321,12 @@ void Q2Agent::DirectApproximationWithReplay(const World* world, const vector<Mis
 	rewardTarget = _updateExternalReward(world,missiles);
 	_rewardApproximator.Classify(_getCurrentState((Action)action));
 	rewardEstimate = _rewardApproximator.GetOutputs()[0].Output;
-	if(rewardTarget != 0.0){
+	if(rewardTarget != 0.0 && _totalEpisodes < 32000){
 		//store the example
-		_rewardExamples.push_back( RewardExample(_getCurrentState((Action)action),rewardTarget) );
-		//re-train for a while on the reward batch, stochastically
+		_rewardExamples.push_back( TrainingExample(_getCurrentState((Action)action),rewardTarget) );
+		//re-train briefly on the reward batch, stochastically
 		for(int i = 0; i < 20; i++){
-			RewardExample& example = _rewardExamples[ rand() % _rewardExamples.size() ];
+			TrainingExample& example = _rewardExamples[ rand() % _rewardExamples.size() ];
 			_rewardApproximator.Classify(example.xs);
 			_rewardApproximator.BackpropagateError(example.xs, example.target);
 			_rewardApproximator.UpdateWeights(example.xs, example.target);
@@ -1346,6 +1356,16 @@ void Q2Agent::DirectApproximationWithReplay(const World* world, const vector<Mis
 	_epochReward += qTarget;
 	//cout << "qTarget: " << qTarget << " maxQ: " << maxQ << endl;
 
+	//flush reward examples once for offline analysis and training
+	if(_totalEpisodes == 32000){
+		cout << "Batch training reward approximator on learnt terminal reward examples..." << endl;
+		//batch train over the entire set for a while
+		_rewardApproximator.StochasticBatchTrain(_rewardExamples, 200000);
+		_flushRewardExamples();
+		cout << "sleeping 5s" << endl;
+		sleep(5);
+	}
+
 	//this seems to work nicely, to prevent unlearning from many non-terminal experiences
 	//if(rewardEstimate != 0){
 	if(_totalEpisodes < 32000){
@@ -1366,7 +1386,7 @@ void Q2Agent::DirectApproximationWithReplay(const World* world, const vector<Mis
 		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 		//record the labeled external rewards as well, every so often
 		//if(_totalEpisodes % 1000 == 0){
-		//	_flushRewardVectors();
+		//	_flushKVectors();
 		//}
 	}
 
@@ -1384,7 +1404,7 @@ void Q2Agent::DirectApproximationWithReplay(const World* world, const vector<Mis
 	}
 	//experimental: search for optimal action
 	else{
-		CurrentAction = _searchForOptimalAction(world, missiles, 1);
+		CurrentAction = _searchForOptimalAction(world, missiles, 2);
 	}
 
 	//map the action into outputs
@@ -1489,7 +1509,7 @@ void Q2Agent::DirectApproximationUpdate(const World* world, const vector<Missile
 		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 		//record the labeled external rewards as well, every so often
 		//if(_totalEpisodes % 1000 == 0){
-		//	_flushRewardVectors();
+		//	_flushKVectors();
 		//}
 	}
 
@@ -1565,7 +1585,7 @@ void Q2Agent::LogisticRewardApproximationUpdate(const World* world, const vector
 	if(_kVectors.size() > 5000){
 		string junk, line;
 		//for the sake of experimentation, I'm just outputting the k-vectors, mining them in python, then reading the output params back in
-		_flushRewardVectors(true);
+		_flushKVectors(true);
 		cout << "Enter anything to continue, once python logistic regression has completed on kvectors.csv, and params can be read from rwdParams.csv" << endl;
 		cin >> junk;
 		//now read the reward params back in to each neuron
@@ -1692,7 +1712,7 @@ void Q2Agent::Update(const World* world, const vector<Missile>& missiles)
 		_recordExample(_getPreviousState((Action)CurrentAction), qTarget, prevEstimate, CurrentAction);
 		//record the labeled external rewards as well, every so often
 		//if(_totalEpisodes % 1000 == 0){
-		//	_flushRewardVectors();
+		//	_flushKVectors();
 		//}
 	}
 

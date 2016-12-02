@@ -23,15 +23,6 @@ class kvector{
 
 class World;
 
-//A straightforward nn training example class
-class RewardExample{
-	public:
-		RewardExample()=delete;
-		RewardExample(const vector<double>& state, double rewardTarget);
-		vector<double> xs;
-		double target;
-};
-
 //for minibatch implementations
 class Experience{
 	public:
@@ -73,7 +64,7 @@ class Q2Agent{
 		double _eta;
 		double _gamma;
 		double _totalExternalReward;
-		vector<RewardExample> _rewardExamples;
+		vector<TrainingExample> _rewardExamples;
 		vector<kvector> _kVectors;
 		string _historyFilePath;
 		fstream _outputFile;
@@ -116,7 +107,8 @@ class Q2Agent{
 		void _estimateSubsequentState(double xHeading, double yHeading, double destX, double destY, const World* world, const vector<Missile>& missiles, vector<double>& subsequentState);
 		
 		//experimental logging
-		void _flushRewardVectors(bool clearVecs);
+		void _flushKVectors(bool clearVecs);
+		void _flushRewardExamples();
 		void _storeRewardParams(const vector<double>& state, double totalReward);
 		void _storeTerminalState(const vector<double>& state, double terminalValue);
 		void _storeLabeledVector(const vector<double>& state, double terminalValue, fstream& outputFile);
