@@ -50,12 +50,12 @@ Q2Agent::Q2Agent(int initX, int initY)
 	EpochGoalCount = 0;
 	EpochActionCount = 0;
 	EpochCollisionCount = 0;
-	GoalResetThreshold = 1;
+	GoalResetThreshold = 2;
 
 	//set _eta value, the q-learning learning rate
 	_eta = 0.05;
 	_gamma = 0.9;
-	GoalResetThreshold = 1;
+	GoalResetThreshold = 2;
 	_t = 0; //time series index
 	_currentActionValues.resize(NUM_ACTIONS); //for caching the q-values per action, instead of re-calling Classify() on the net, per action
 	//init the neural networks, one for each action
@@ -1358,9 +1358,9 @@ void Q2Agent::DirectApproximationWithReplay(const World* world, const vector<Mis
 
 	//flush reward examples once for offline analysis and training
 	if(_totalEpisodes == 32000){
-		cout << "Batch training reward approximator on learnt terminal reward examples..." << endl;
+		cout << "Batch training reward approximator on " << _rewardExamples.size() << " learnt terminal reward examples..." << endl;
 		//batch train over the entire set for a while
-		_rewardApproximator.StochasticBatchTrain(_rewardExamples, 200000);
+		_rewardApproximator.StochasticBatchTrain(_rewardExamples, 400000);
 		_flushRewardExamples();
 		cout << "sleeping 5s" << endl;
 		sleep(5);

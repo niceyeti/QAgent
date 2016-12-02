@@ -42,6 +42,8 @@ using namespace std;
 #define ALPHA_REPETITION 't'
 #define ALPHA_COLLISION 'c'
 
+//The reward parameters. Play with these for exploratory analysis. I accidentally had the agent set up
+//so it would never perceive/learn the goal reward, and yet it often converged to optimal goal-finding behavior.
 #define EXTERNAL_REWARD_GOAL 2
 #define EXTERNAL_REWARD_VISITED -0.1
 #define EXTERNAL_REWARD_COLLISION -3
